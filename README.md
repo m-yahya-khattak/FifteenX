@@ -1,4 +1,3 @@
-```md
 # ⚡ FifteenX – 15-Minute Prediction Markets (Powered by Polymarket)
 
 **FifteenX** is a fast, lightweight **15-minute prediction market experience** built on top of Polymarket data. It delivers an intense, game-style environment where users predict short-term market movements (e.g., BTC up/down in 15 minutes), paper-trade, and compete on leaderboards.
@@ -197,5 +196,3 @@ Open to collaborators, builders, & contributors.
 15-minute round intensity × trading excitement × exponential thrill.
 
 Let’s build something addictive.
-
-```
