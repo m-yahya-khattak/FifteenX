@@ -51,10 +51,10 @@ export default function TradingPanel() {
 
       {/* Up/Down Buttons */}
       <div className="mb-4 flex gap-2">
-        <button className="flex-1 rounded-lg bg-green-600 px-4 py-4 text-lg font-semibold text-white hover:bg-green-700">
+        <button className="flex-1 rounded-lg bg-green-600 px-3 py-3 text-base font-semibold text-white hover:bg-green-700 sm:px-4 sm:py-4 sm:text-lg">
           Up 60¢
         </button>
-        <button className="flex-1 rounded-lg bg-zinc-700 px-4 py-4 text-lg font-semibold text-white hover:bg-zinc-600">
+        <button className="flex-1 rounded-lg bg-zinc-700 px-3 py-3 text-base font-semibold text-white hover:bg-zinc-600 sm:px-4 sm:py-4 sm:text-lg">
           Down 41¢
         </button>
       </div>
@@ -65,8 +65,8 @@ export default function TradingPanel() {
           <span className="text-sm text-zinc-400">Amount</span>
           <span className="text-sm text-zinc-400">Balance $0.00</span>
         </div>
-        <div className="mb-2 rounded-lg border border-zinc-800 bg-zinc-800 p-4">
-          <div className="text-3xl font-bold text-white">${amount}</div>
+        <div className="mb-2 rounded-lg border border-zinc-800 bg-zinc-800 p-3 sm:p-4">
+          <div className="text-2xl font-bold text-white sm:text-3xl">${amount}</div>
         </div>
         <div className="flex gap-2">
           {["$1", "$20", "$100", "Max"].map((value) => (

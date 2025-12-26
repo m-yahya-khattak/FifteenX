@@ -15,7 +15,8 @@ export default function PriceChart() {
   const maxPrice = Math.max(...dataPoints.map((d) => d.price));
   const priceRange = maxPrice - minPrice;
   const chartHeight = 200;
-  const chartWidth = 600;
+  // Use a reasonable width that scales well on all screen sizes
+  const chartWidth = 1000;
 
   return (
     <div className="mb-6 rounded-lg border border-zinc-800 bg-zinc-900 p-4">
@@ -27,13 +28,13 @@ export default function PriceChart() {
       </div>
 
       {/* Chart Container */}
-      <div className="relative mb-4" style={{ height: `${chartHeight}px` }}>
+      <div className="relative mb-4 w-full" style={{ height: `${chartHeight}px` }}>
         <svg
           width="100%"
           height={chartHeight}
-          className="overflow-visible"
           viewBox={`0 0 ${chartWidth} ${chartHeight}`}
-          preserveAspectRatio="none"
+          preserveAspectRatio="xMidYMid meet"
+          style={{ display: "block" }}
         >
           {/* Y-axis labels */}
           <text
@@ -108,11 +109,11 @@ export default function PriceChart() {
       </div>
 
       {/* Time Range Selector */}
-      <div className="mt-4 flex items-center gap-2 border-t border-zinc-800 pt-4">
+      <div className="mt-4 flex flex-wrap items-center gap-2 border-t border-zinc-800 pt-4">
         {timeRanges.map((range, i) => (
           <button
             key={i}
-            className={`rounded px-3 py-1 text-sm font-medium transition-colors ${
+            className={`rounded px-2 py-1 text-xs font-medium transition-colors sm:px-3 sm:text-sm ${
               i === 0
                 ? "bg-zinc-800 text-white"
                 : "text-zinc-400 hover:bg-zinc-800 hover:text-white"

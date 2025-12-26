@@ -17,8 +17,8 @@ export default function Header() {
           </div>
 
           {/* Right: Portfolio and User Actions */}
-          <div className="flex items-center gap-4">
-            <div className="flex items-center gap-4 text-sm text-white">
+          <div className="flex items-center gap-2 sm:gap-4">
+            <div className="hidden items-center gap-2 text-xs text-white sm:flex sm:gap-4 sm:text-sm">
               <div>
                 <span className="text-zinc-400">Portfolio</span>{" "}
                 <span className="font-semibold">$0.00</span>
@@ -28,8 +28,9 @@ export default function Header() {
                 <span className="font-semibold">$0.00</span>
               </div>
             </div>
-            <button className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700">
-              Deposit
+            <button className="rounded-lg bg-blue-600 px-2 py-1.5 text-xs font-medium text-white hover:bg-blue-700 sm:px-4 sm:py-2 sm:text-sm">
+              <span className="hidden sm:inline">Deposit</span>
+              <span className="sm:hidden">Dep</span>
             </button>
             <button className="rounded-lg p-2 text-zinc-400 hover:bg-zinc-900">
               <svg
@@ -65,7 +66,7 @@ export default function Header() {
         </div>
 
         {/* Navigation Tabs */}
-        <div className="flex items-center gap-1 overflow-x-auto border-t border-zinc-800">
+        <div className="flex items-center gap-1 overflow-x-auto border-t border-zinc-800 scrollbar-hide">
           {[
             "Trending",
             "Breaking",
@@ -82,7 +83,7 @@ export default function Header() {
           ].map((tab) => (
             <button
               key={tab}
-              className="whitespace-nowrap border-b-2 border-transparent px-4 py-3 text-sm font-medium text-zinc-400 transition-colors hover:border-zinc-700 hover:text-white"
+              className="whitespace-nowrap border-b-2 border-transparent px-3 py-2 text-xs font-medium text-zinc-400 transition-colors hover:border-zinc-700 hover:text-white sm:px-4 sm:py-3 sm:text-sm"
             >
               {tab}
             </button>

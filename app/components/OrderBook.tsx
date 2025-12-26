@@ -20,10 +20,10 @@ export default function OrderBook() {
   ];
 
   return (
-    <div className="mb-6 rounded-lg border border-zinc-800 bg-zinc-900 p-4">
-      <div className="mb-4 flex items-center justify-between">
+    <div className="mb-6 rounded-lg border border-zinc-800 bg-zinc-900 p-3 sm:p-4">
+      <div className="mb-4 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
         <div className="flex items-center gap-2">
-          <h3 className="text-lg font-semibold text-white">Order Book</h3>
+          <h3 className="text-base font-semibold text-white sm:text-lg">Order Book</h3>
           <button className="text-zinc-400 hover:text-white">
             <svg
               className="h-4 w-4"
@@ -82,7 +82,7 @@ export default function OrderBook() {
         </button>
       </div>
 
-      <div className="flex gap-4">
+      <div className="flex flex-col gap-4 md:flex-row">
         {/* Asks (Red) */}
         <div className="flex-1">
           <div className="mb-2 flex items-center gap-2">
@@ -100,7 +100,7 @@ export default function OrderBook() {
             {asks.map((ask, i) => (
               <div
                 key={i}
-                className="grid grid-cols-3 gap-2 rounded bg-red-500/10 px-2 py-1 text-sm"
+                className="grid grid-cols-3 gap-2 rounded bg-red-500/10 px-2 py-1 text-xs sm:text-sm"
               >
                 <span className="font-medium text-red-400">{ask.price}</span>
                 <span className="text-center text-zinc-300">{ask.shares}</span>
@@ -108,13 +108,15 @@ export default function OrderBook() {
               </div>
             ))}
           </div>
-          <div className="mt-2 text-center text-sm text-zinc-400">
+          <div className="mt-2 text-center text-xs text-zinc-400 sm:text-sm">
             Last: 64¢
           </div>
         </div>
 
         {/* Spread */}
-        <div className="flex items-center text-sm text-zinc-500">Spread: 1¢</div>
+        <div className="flex items-center justify-center text-xs text-zinc-500 md:flex-col">
+          Spread: 1¢
+        </div>
 
         {/* Bids (Green) */}
         <div className="flex-1">
@@ -133,7 +135,7 @@ export default function OrderBook() {
             {bids.map((bid, i) => (
               <div
                 key={i}
-                className="grid grid-cols-3 gap-2 rounded bg-green-500/10 px-2 py-1 text-sm"
+                className="grid grid-cols-3 gap-2 rounded bg-green-500/10 px-2 py-1 text-xs sm:text-sm"
               >
                 <span className="font-medium text-green-400">{bid.price}</span>
                 <span className="text-center text-zinc-300">{bid.shares}</span>

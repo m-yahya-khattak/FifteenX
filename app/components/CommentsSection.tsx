@@ -35,10 +35,10 @@ export default function CommentsSection() {
   return (
     <div className="rounded-lg border border-zinc-800 bg-zinc-900 p-4">
       {/* Tabs */}
-      <div className="mb-4 flex gap-4 border-b border-zinc-800">
+      <div className="mb-4 flex gap-2 overflow-x-auto border-b border-zinc-800 scrollbar-hide sm:gap-4">
         <button
           onClick={() => setActiveTab("comments")}
-          className={`border-b-2 px-4 py-2 text-sm font-medium transition-colors ${
+          className={`whitespace-nowrap border-b-2 px-3 py-2 text-xs font-medium transition-colors sm:px-4 sm:text-sm ${
             activeTab === "comments"
               ? "border-blue-500 text-white"
               : "border-transparent text-zinc-400 hover:text-white"
@@ -48,7 +48,7 @@ export default function CommentsSection() {
         </button>
         <button
           onClick={() => setActiveTab("holders")}
-          className={`border-b-2 px-4 py-2 text-sm font-medium transition-colors ${
+          className={`whitespace-nowrap border-b-2 px-3 py-2 text-xs font-medium transition-colors sm:px-4 sm:text-sm ${
             activeTab === "holders"
               ? "border-blue-500 text-white"
               : "border-transparent text-zinc-400 hover:text-white"
@@ -58,7 +58,7 @@ export default function CommentsSection() {
         </button>
         <button
           onClick={() => setActiveTab("activity")}
-          className={`border-b-2 px-4 py-2 text-sm font-medium transition-colors ${
+          className={`whitespace-nowrap border-b-2 px-3 py-2 text-xs font-medium transition-colors sm:px-4 sm:text-sm ${
             activeTab === "activity"
               ? "border-blue-500 text-white"
               : "border-transparent text-zinc-400 hover:text-white"

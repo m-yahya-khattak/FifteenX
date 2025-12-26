@@ -12,8 +12,8 @@ export default function Home() {
   return (
     <div className="min-h-screen bg-black">
       <Header />
-      <div className="mx-auto max-w-7xl px-4 py-6">
-        <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
+      <div className="mx-auto max-w-7xl px-3 py-4 sm:px-4 sm:py-6">
+        <div className="grid grid-cols-1 gap-4 lg:grid-cols-3 lg:gap-6">
           {/* Main Content Area */}
           <div className="lg:col-span-2">
             <MarketHeader />
