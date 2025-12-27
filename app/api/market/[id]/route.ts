@@ -2,12 +2,12 @@ import { NextResponse } from "next/server";
 
 export async function GET(
   request: Request,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
     const apiKey = process.env.POLYMARKET_API_KEY;
     const apiUrl = process.env.POLYMARKET_API_URL || "https://clob.polymarket.com";
-    const marketId = params.id;
+    const { id: marketId } = await params;
 
     if (!apiKey) {
       return NextResponse.json(
