@@ -72,7 +72,7 @@ export default function MarketHeader() {
   };
 
   // Calculate price change
-  const calculatePriceChange = (reference?: number, current?: number) => {
+  const calculatePriceChange = (reference?: number | null, current?: number | null) => {
     if (!reference || !current) return null;
     return current - reference;
   };
@@ -145,6 +145,8 @@ export default function MarketHeader() {
   const priceChangeFormatted = priceChange !== null 
     ? `${priceChange >= 0 ? "+" : ""}$${priceChange.toFixed(2)}`
     : null;
+  
+  const hasPriceChange = priceChange !== null;
 
   return (
     <div className="mb-6">
@@ -185,10 +187,10 @@ export default function MarketHeader() {
                 ? "Error"
                 : "Loading..."}
             </span>
-            {priceChangeFormatted && (
+            {priceChangeFormatted && hasPriceChange && (
               <span
                 className={`rounded px-2 py-1 text-xs font-semibold ${
-                  priceChange >= 0
+                  priceChange! >= 0
                     ? "bg-green-500/20 text-green-400"
                     : "bg-red-500/20 text-red-400"
                 }`}
