@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { findActiveMarket } from "../../lib/marketUtils";
 
 export async function GET(request: Request) {
   try {
@@ -12,67 +13,30 @@ export async function GET(request: Request) {
       );
     }
 
-    // Search for 15-minute BTC markets
-    // Try different possible endpoints
-    const searchParams = new URL(request.url).searchParams;
-    const query = searchParams.get("query") || "btc";
-    const limit = searchParams.get("limit") || "10";
+    // Find the active 15-minute BTC market
+    console.log("=== FINDING ACTIVE 15-MINUTE BTC MARKET ===");
+    const result = await findActiveMarket();
 
-    // Use Gamma API endpoint for specific market
-    // Format: https://gamma-api.polymarket.com/markets/slug/{slug}
-    const marketSlug = "btc-updown-15m-1766755800";
-    const gammaEndpoint = `https://gamma-api.polymarket.com/markets/slug/${marketSlug}`;
-
-    console.log("=== FETCHING MARKET FROM GAMMA API ===");
-    console.log("Endpoint:", gammaEndpoint);
-
-    const response = await fetch(gammaEndpoint, {
-      method: "GET",
-      headers: {
-        "Content-Type": "application/json",
-        "Accept": "application/json",
-      },
-      // Add cache control for real-time data
-      cache: "no-store",
-    });
-
-    console.log("Response Status:", response.status);
-    console.log("Response OK:", response.ok);
-
-    if (!response.ok) {
-      const errorText = await response.text();
-      console.log("=== ERROR RESPONSE ===");
-      console.log("Status:", response.status);
-      console.log("Error Text:", errorText);
-      return NextResponse.json(
-        {
-          success: false,
-          error: `Failed to fetch markets: ${response.status}`,
-          details: errorText,
-        },
-        { status: response.status }
-      );
+    if (!result.success || !result.market) {
+      console.log("=== NO ACTIVE MARKET FOUND ===");
+      console.log("Error:", result.error);
+      return NextResponse.json({
+        success: false,
+        error: result.error || "No active 15-minute BTC market found",
+      });
     }
 
-    const data = await response.json();
+    const data = result.market;
     
     console.log("=== RAW GAMMA API RESPONSE ===");
     console.log("Data Type:", typeof data);
     console.log("Object keys:", data ? Object.keys(data) : "N/A");
     console.log("Full Response:", JSON.stringify(data, null, 2));
 
-    if (!data) {
-      console.log("\n=== NO DATA RETURNED ===");
-      return NextResponse.json({
-        success: false,
-        error: "No data returned from API",
-      });
-    }
-
     // Map Gamma API response to our format
     const market = {
-      id: data.id || data.slug || marketSlug,
-      slug: data.slug || marketSlug,
+      id: data.id || data.slug || result.slug,
+      slug: data.slug || result.slug,
       title: data.question || data.title || "Bitcoin Up or Down",
       description: data.description || "",
       startTime: data.startDate || data.start_time || data.createdAt,

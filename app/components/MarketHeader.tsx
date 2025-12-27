@@ -22,7 +22,8 @@ export default function MarketHeader() {
   const rtds = useRTDS();
   const currentPrice = rtds.lastPrice;
 
-  // Format date to readable format
+  // Format date to readable format in user's local timezone
+  // Format: "December 26, 8:30AM-8:45AM GMT+7" (shows user's timezone)
   const formatTimeRange = (startTime?: string, endTime?: string) => {
     if (!startTime || !endTime) return "Loading...";
     
@@ -30,22 +31,63 @@ export default function MarketHeader() {
       const start = new Date(startTime);
       const end = new Date(endTime);
       
-      const startFormatted = start.toLocaleString("en-US", {
-        month: "long",
-        day: "numeric",
+      // Get month and day in local timezone using toLocaleString for consistency
+      const month = start.toLocaleString("en-US", { month: "long" });
+      const day = start.toLocaleString("en-US", { day: "numeric" });
+      
+      // Format times in user's local timezone
+      const startTimeFormatted = start.toLocaleString("en-US", {
         hour: "numeric",
         minute: "2-digit",
         hour12: true,
+      });
+      
+      const endTimeFormatted = end.toLocaleString("en-US", {
+        hour: "numeric",
+        minute: "2-digit",
+        hour12: true,
+      });
+      
+      // Get timezone abbreviation (e.g., "GMT+7", "EST", "PST")
+      const timeZoneName = Intl.DateTimeFormat("en-US", {
         timeZoneName: "short",
-      });
+      })
+        .formatToParts(start)
+        .find((part) => part.type === "timeZoneName")?.value || "";
       
-      const endFormatted = end.toLocaleString("en-US", {
+      return `${month} ${day}, ${startTimeFormatted}-${endTimeFormatted} ${timeZoneName}`;
+    } catch {
+      return "Invalid date";
+    }
+  };
+
+  // Format date for title in user's local timezone
+  // Format: "December 26, 8:30AM-8:45AM" (local timezone, no timezone label)
+  const formatTimeRangeLocal = (startTime?: string, endTime?: string) => {
+    if (!startTime || !endTime) return "Loading...";
+    
+    try {
+      const start = new Date(startTime);
+      const end = new Date(endTime);
+      
+      // Get month and day in local timezone
+      const month = start.toLocaleString("en-US", { month: "long" });
+      const day = start.getDate();
+      
+      // Format times in user's local timezone
+      const startTimeFormatted = start.toLocaleString("en-US", {
         hour: "numeric",
         minute: "2-digit",
         hour12: true,
       });
       
-      return `${startFormatted} - ${endFormatted}`;
+      const endTimeFormatted = end.toLocaleString("en-US", {
+        hour: "numeric",
+        minute: "2-digit",
+        hour12: true,
+      });
+      
+      return `${month} ${day}, ${startTimeFormatted}-${endTimeFormatted}`;
     } catch {
       return "Invalid date";
     }
@@ -91,11 +133,34 @@ export default function MarketHeader() {
       }
 
       const market = marketsData.market;
+      
+      // Extract timestamp from slug (format: btc-updown-15m-{timestamp})
+      // Calculate proper start/end times from the timestamp to ensure 15-minute boundaries
+      let calculatedStartTime: string | undefined;
+      let calculatedEndTime: string | undefined;
+      
+      if (market.slug) {
+        const slugMatch = market.slug.match(/btc-updown-15m-(\d+)/);
+        if (slugMatch) {
+          const timestamp = parseInt(slugMatch[1], 10); // Unix timestamp in seconds
+          // Start time is the timestamp
+          calculatedStartTime = new Date(timestamp * 1000).toISOString();
+          // End time is 15 minutes later (900 seconds)
+          calculatedEndTime = new Date((timestamp + 900) * 1000).toISOString();
+        }
+      }
+      
+      // Clean title - remove time range pattern if present
+      let cleanTitle = market.title || market.question || "Bitcoin Up or Down";
+      // Remove pattern like " - December 27, 8:15AM-8:30AM ET" or similar
+      cleanTitle = cleanTitle.replace(/\s*-\s*\w+\s+\d+,\s*\d+:\d+\w+-\d+:\d+\w+\s+\w+.*$/i, "").trim();
+      
       setMarketData({
         id: market.id || market.slug,
-        title: market.title || market.question || "Bitcoin Up or Down",
-        startTime: market.startTime || market.startDate || market.start_time || market.createdAt,
-        endTime: market.endTime || market.endDate || market.end_time,
+        title: cleanTitle,
+        // Use calculated times from slug timestamp if available, otherwise fall back to API times
+        startTime: calculatedStartTime || market.startTime || market.startDate || market.start_time || market.createdAt,
+        endTime: calculatedEndTime || market.endTime || market.endDate || market.end_time,
         referencePrice: market.referencePrice || market.reference_price || market.price_to_beat || market.priceToBeat || 88630.18, // Fallback to static if not in API
       });
 
@@ -112,15 +177,39 @@ export default function MarketHeader() {
     fetchMarketData();
   }, []);
 
-  // Update countdown every second
+  // Update countdown every second and check for new market
   useEffect(() => {
     const interval = setInterval(() => {
       if (marketData?.endTime) {
-        setCountdown(calculateCountdown(marketData.endTime));
+        const countdownValue = calculateCountdown(marketData.endTime);
+        setCountdown(countdownValue);
+        
+        // If market has ended, fetch next market
+        if (countdownValue === "Ended" || countdownValue === "") {
+          console.log("Market ended, fetching next market...");
+          fetchMarketData();
+        }
       }
     }, 1000);
 
     return () => clearInterval(interval);
+  }, [marketData?.endTime]);
+
+  // Auto-refresh: Check for new market every 2 minutes as backup
+  useEffect(() => {
+    const refreshInterval = setInterval(() => {
+      if (marketData?.endTime) {
+        const end = new Date(marketData.endTime);
+        const now = new Date();
+        // If market ended or will end soon, refresh
+        if (end.getTime() <= now.getTime() + 60000) { // 1 minute before or after
+          console.log("Auto-refreshing market data...");
+          fetchMarketData();
+        }
+      }
+    }, 120000); // Every 2 minutes
+
+    return () => clearInterval(refreshInterval);
   }, [marketData?.endTime]);
 
   // Price updates automatically from RTDS hook - no polling needed
@@ -157,7 +246,7 @@ export default function MarketHeader() {
         </div>
         <div>
           <h1 className="text-xl font-bold text-white sm:text-2xl">
-            {marketData.title || "Bitcoin Up or Down"}
+            Bitcoin Up or Down - 15 Minutes Market
           </h1>
           <p className="text-xs text-zinc-400 sm:text-sm">
             {formatTimeRange(marketData.startTime, marketData.endTime)}
