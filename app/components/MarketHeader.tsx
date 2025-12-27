@@ -10,6 +10,11 @@ interface MarketData {
   endTime?: string;
   referencePrice?: number;
   currentPrice?: number;
+  referencePriceStatus?: {
+    found: boolean;
+    source: string;
+    value: number | null;
+  };
 }
 
 export default function MarketHeader() {
@@ -161,7 +166,8 @@ export default function MarketHeader() {
         // Use calculated times from slug timestamp if available, otherwise fall back to API times
         startTime: calculatedStartTime || market.startTime || market.startDate || market.start_time || market.createdAt,
         endTime: calculatedEndTime || market.endTime || market.endDate || market.end_time,
-        referencePrice: market.referencePrice || market.reference_price || market.price_to_beat || market.priceToBeat || 88630.18, // Fallback to static if not in API
+        referencePrice: market.referencePrice || market.reference_price || market.price_to_beat || market.priceToBeat || null,
+        referencePriceStatus: market.referencePriceStatus,
       });
 
       // Current price will come from RTDS hook automatically
@@ -257,12 +263,48 @@ export default function MarketHeader() {
       {/* Price Info */}
       <div className="mb-4 flex flex-col gap-4 rounded-lg border border-zinc-800 bg-zinc-900 p-4 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <div className="text-xs text-zinc-400">PRICE TO BEAT</div>
+          <div className="flex items-center gap-2">
+            <div className="text-xs text-zinc-400">PRICE TO BEAT</div>
+            {marketData.referencePriceStatus && (
+              <span
+                className={`text-[10px] px-1.5 py-0.5 rounded ${
+                  marketData.referencePriceStatus.source.startsWith("historical")
+                    ? "bg-blue-500/20 text-blue-400"
+                    : marketData.referencePriceStatus.found
+                    ? "bg-green-500/20 text-green-400"
+                    : "bg-yellow-500/20 text-yellow-400"
+                }`}
+                title={`Source: ${marketData.referencePriceStatus.source}`}
+              >
+                {marketData.referencePriceStatus.source.startsWith("historical")
+                  ? marketData.referencePriceStatus.source.includes("chainlink")
+                    ? "📊 Historical (Chainlink)"
+                    : "📊 Historical (CoinGecko)"
+                  : marketData.referencePriceStatus.found
+                  ? "✓ Found"
+                  : "⚠ Fallback"}
+              </span>
+            )}
+          </div>
           <div className="text-lg font-bold text-white sm:text-xl">
             {marketData.referencePrice 
               ? `$${marketData.referencePrice.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+              : marketData.referencePriceStatus && !marketData.referencePriceStatus.found
+              ? "Not found in API"
               : "Loading..."}
           </div>
+          {marketData.referencePriceStatus && 
+           !marketData.referencePriceStatus.found && 
+           !marketData.referencePriceStatus.source.startsWith("historical") && (
+            <div className="text-[10px] text-yellow-400 mt-1">
+              Using fallback value. Check console for details.
+            </div>
+          )}
+          {marketData.referencePriceStatus?.source.startsWith("historical") && (
+            <div className="text-[10px] text-blue-400 mt-1">
+              Price at market start ({marketData.referencePriceStatus.source.replace("historical_", "")})
+            </div>
+          )}
         </div>
         <div className="text-left sm:text-right">
           <div className="text-xs text-zinc-400">CURRENT PRICE</div>
