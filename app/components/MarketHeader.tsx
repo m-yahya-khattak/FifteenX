@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { useRTDS } from "../hooks/useRTDS";
 
 interface MarketData {
   id?: string;
@@ -13,10 +14,13 @@ interface MarketData {
 
 export default function MarketHeader() {
   const [marketData, setMarketData] = useState<MarketData | null>(null);
-  const [currentPrice, setCurrentPrice] = useState<number | null>(null);
   const [countdown, setCountdown] = useState<string>("");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  
+  // Get real-time price from RTDS
+  const rtds = useRTDS();
+  const currentPrice = rtds.lastPrice;
 
   // Format date to readable format
   const formatTimeRange = (startTime?: string, endTime?: string) => {
@@ -95,10 +99,7 @@ export default function MarketHeader() {
         referencePrice: market.referencePrice || market.reference_price || market.price_to_beat || market.priceToBeat || 88630.18, // Fallback to static if not in API
       });
 
-      // Keep price static for now (price route is failing)
-      // Set static current price
-      setCurrentPrice(88637.72);
-
+      // Current price will come from RTDS hook automatically
       setLoading(false);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to load market data");
@@ -122,25 +123,7 @@ export default function MarketHeader() {
     return () => clearInterval(interval);
   }, [marketData?.endTime]);
 
-  // Price refresh disabled - keeping static for now
-  // useEffect(() => {
-  //   if (!marketData?.id) return;
-  //
-  //   const interval = setInterval(async () => {
-  //     try {
-  //       const priceResponse = await fetch(`/api/market/${marketData.id}/price`);
-  //       const priceData = await priceResponse.json();
-  //       
-  //       if (priceData.success && priceData.currentPrice) {
-  //         setCurrentPrice(priceData.currentPrice);
-  //       }
-  //     } catch (err) {
-  //       console.error("Failed to refresh price:", err);
-  //     }
-  //   }, 3000);
-  //
-  //   return () => clearInterval(interval);
-  // }, [marketData?.id]);
+  // Price updates automatically from RTDS hook - no polling needed
 
   if (loading) {
     return (
@@ -196,6 +179,10 @@ export default function MarketHeader() {
             <span className="text-lg font-bold text-white sm:text-xl">
               {currentPrice 
                 ? `$${currentPrice.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+                : rtds.connectionStatus === "connecting"
+                ? "Connecting..."
+                : rtds.connectionStatus === "error"
+                ? "Error"
                 : "Loading..."}
             </span>
             {priceChangeFormatted && (
@@ -210,6 +197,11 @@ export default function MarketHeader() {
               </span>
             )}
           </div>
+          {rtds.connectionStatus === "connected" && currentPrice && (
+            <div className="mt-1 text-[10px] text-green-400">
+              Live
+            </div>
+          )}
         </div>
       </div>
 

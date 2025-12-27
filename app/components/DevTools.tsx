@@ -1,19 +1,23 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import { useRTDS } from "../hooks/useRTDS";
 
 interface ConnectionStatus {
   name: string;
   status: "connected" | "disconnected" | "connecting" | "error";
   lastCheck?: Date;
+  lastPrice?: number;
 }
 
 export default function DevTools() {
   const [isOpen, setIsOpen] = useState(false);
+  const rtds = useRTDS();
+  
   const [connections, setConnections] = useState<ConnectionStatus[]>([
     { name: "Gamma API", status: "disconnected" },
     { name: "CLOB API", status: "disconnected" },
-    { name: "WebSocket", status: "disconnected" },
+    { name: "RTDS", status: "disconnected" },
     { name: "Price Feed", status: "disconnected" },
   ]);
 
@@ -96,14 +100,21 @@ export default function DevTools() {
       );
     }
 
-    // WebSocket and Price Feed remain disconnected for now
-    // (can be implemented later when those features are added)
+    // Update RTDS status from hook
     setConnections((prev) =>
       prev.map((conn) => {
-        if (conn.name === "WebSocket" || conn.name === "Price Feed") {
+        if (conn.name === "RTDS") {
           return {
             ...conn,
-            status: "disconnected",
+            status: rtds.connectionStatus,
+            lastCheck: new Date(),
+            lastPrice: rtds.lastPrice || undefined,
+          };
+        }
+        if (conn.name === "Price Feed") {
+          return {
+            ...conn,
+            status: rtds.isConnected && rtds.lastPrice ? "connected" : "disconnected",
             lastCheck: new Date(),
           };
         }
@@ -111,6 +122,28 @@ export default function DevTools() {
       })
     );
   };
+
+  // Update RTDS status in real-time
+  useEffect(() => {
+    setConnections((prev) =>
+      prev.map((conn) => {
+        if (conn.name === "RTDS") {
+          return {
+            ...conn,
+            status: rtds.connectionStatus,
+            lastPrice: rtds.lastPrice || undefined,
+          };
+        }
+        if (conn.name === "Price Feed") {
+          return {
+            ...conn,
+            status: rtds.isConnected && rtds.lastPrice ? "connected" : "disconnected",
+          };
+        }
+        return conn;
+      })
+    );
+  }, [rtds.connectionStatus, rtds.isConnected, rtds.lastPrice]);
 
   const getStatusColor = (status: ConnectionStatus["status"]) => {
     switch (status) {
@@ -212,10 +245,11 @@ export default function DevTools() {
                           connection.status
                         )} ${connection.status === "connected" ? "animate-pulse" : ""}`}
                       />
-                      <span className="text-xs text-white">
-                        {connection.name}
-                      </span>
-                    </div>
+                    <span className="text-xs text-white">
+                      {connection.name}
+                    </span>
+                  </div>
+                  <div className="flex flex-col items-end gap-0.5">
                     <span
                       className={`text-xs ${
                         connection.status === "connected"
@@ -229,6 +263,15 @@ export default function DevTools() {
                     >
                       {getStatusText(connection.status)}
                     </span>
+                    {connection.lastPrice && (
+                      <span className="text-[10px] text-zinc-500">
+                        ${connection.lastPrice.toLocaleString("en-US", {
+                          minimumFractionDigits: 2,
+                          maximumFractionDigits: 2,
+                        })}
+                      </span>
+                    )}
+                  </div>
                   </div>
                 ))}
               </div>
