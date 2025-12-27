@@ -65,29 +65,46 @@ export default function Header() {
           </div>
         </div>
 
-        {/* Navigation Tabs */}
-        <div className="flex items-center gap-1 overflow-x-auto border-t border-zinc-800 scrollbar-hide">
-          {[
-            "Trending",
-            "Breaking",
-            "New",
-            "Politics",
-            "Sports",
-            "Crypto",
-            "Finance",
-            "Geopolitics",
-            "Earnings",
-            "Tech",
-            "Culture",
-            "World",
-          ].map((tab) => (
-            <button
-              key={tab}
-              className="whitespace-nowrap border-b-2 border-transparent px-3 py-2 text-xs font-medium text-zinc-400 transition-colors hover:border-zinc-700 hover:text-white sm:px-4 sm:py-3 sm:text-sm"
+        {/* Time Range Selector */}
+        <div className="flex items-center gap-1 overflow-x-auto border-t border-zinc-800 bg-zinc-950/50 scrollbar-hide">
+          <div className="flex items-center gap-1 px-2">
+            <svg
+              className="h-4 w-4 text-zinc-500"
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
             >
-              {tab}
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={2}
+                d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"
+              />
+            </svg>
+            <span className="text-xs font-medium text-zinc-500">Time Range:</span>
+          </div>
+          {["Past", "7:30 AM", "7:45 AM", "8 AM", "8:15 AM", "More"].map((range, i) => (
+            <button
+              key={range}
+              className={`whitespace-nowrap border-b-2 px-3 py-2 text-xs font-medium transition-all sm:px-4 sm:py-2.5 sm:text-sm ${
+                i === 0
+                  ? "border-orange-500 text-white"
+                  : "border-transparent text-zinc-400 hover:border-zinc-600 hover:text-white"
+              }`}
+            >
+              {range}
             </button>
           ))}
+          <div className="ml-auto flex items-center gap-2 px-3">
+            <div className="flex items-center gap-1.5">
+              <div className="h-2 w-2 rounded-full bg-red-500"></div>
+              <span className="text-[10px] text-zinc-500 sm:text-xs">Down</span>
+            </div>
+            <div className="flex items-center gap-1.5">
+              <div className="h-2 w-2 rounded-full bg-green-500"></div>
+              <span className="text-[10px] text-zinc-500 sm:text-xs">Up</span>
+            </div>
+          </div>
         </div>
       </div>
     </header>

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useRef } from "react";
+import { useEffect, useState, useRef, useMemo, useCallback } from "react";
 import { useRTDS } from "../hooks/useRTDS";
 
 interface PriceDataPoint {
@@ -10,13 +10,22 @@ interface PriceDataPoint {
 }
 
 export default function PriceChart() {
-  const timeRanges = ["Past", "7:30 AM", "7:45 AM", "8 AM", "8:15 AM", "More"];
   const rtds = useRTDS();
   const [priceHistory, setPriceHistory] = useState<PriceDataPoint[]>([]);
   const [referencePrice, setReferencePrice] = useState<number | null>(null);
   const [hoveredPoint, setHoveredPoint] = useState<{ x: number; y: number; data: PriceDataPoint } | null>(null);
   const svgRef = useRef<SVGSVGElement>(null);
+  const lastUpdateTimeRef = useRef<number>(0);
+  const pendingUpdateRef = useRef<PriceDataPoint | null>(null);
+  const animationFrameRef = useRef<number | null>(null);
   const maxDataPoints = 30; // Keep last 30 data points
+  const updateThrottleMs = 250; // Update every 250ms for more frequent updates
+  const animatedPriceRef = useRef<number | null>(null); // Use ref instead of state to avoid re-renders
+  const [animatedLastPoint, setAnimatedLastPoint] = useState<{ price: number; time: string; timestamp: number } | null>(null);
+  const animationRef = useRef<number | null>(null);
+  const animationStartRef = useRef<{ startPrice: number; targetPrice: number; startTime: number } | null>(null);
+  const currentTargetPriceRef = useRef<number | null>(null);
+  const lastUpdateTimeRef2 = useRef<number>(0); // Track when to update state (throttled)
 
   // Fetch reference price
   useEffect(() => {
@@ -34,31 +43,222 @@ export default function PriceChart() {
     fetchReferencePrice();
   }, []);
 
-  // Update price history when new price comes in
+  // Continuous animation loop - always running, never stops
+  useEffect(() => {
+    const animate = () => {
+      const now = Date.now();
+      const animationDuration = 500; // Slower, smoother animation
+
+      // Get current price (either from animated point or last history point)
+      let currentPrice = animatedPriceRef.current;
+      if (currentPrice === null && priceHistory.length > 0) {
+        currentPrice = priceHistory[priceHistory.length - 1].price;
+        animatedPriceRef.current = currentPrice;
+      }
+
+      // Always check for new target and update animation
+      if (currentTargetPriceRef.current !== null && currentPrice !== null) {
+        const targetPrice = currentTargetPriceRef.current;
+        const priceDiff = Math.abs(targetPrice - currentPrice);
+
+        if (priceDiff > 0.01) {
+          // Need to animate to new target
+          if (!animationStartRef.current) {
+            // Start new animation
+            animationStartRef.current = {
+              startPrice: currentPrice,
+              targetPrice: targetPrice,
+              startTime: now,
+            };
+          } else {
+            // Update existing animation if target changed significantly
+            const currentTarget = animationStartRef.current.targetPrice;
+            if (Math.abs(targetPrice - currentTarget) > 0.01) {
+              // Target changed - smoothly transition to new target
+              const elapsed = now - animationStartRef.current.startTime;
+              const progress = Math.min(elapsed / animationDuration, 1);
+              const eased = 1 - Math.pow(1 - progress, 3);
+              const currentAnimatedPrice =
+                animationStartRef.current.startPrice +
+                (currentTarget - animationStartRef.current.startPrice) * eased;
+
+              // Continue from current position to new target
+              animationStartRef.current = {
+                startPrice: currentAnimatedPrice,
+                targetPrice: targetPrice,
+                startTime: now,
+              };
+            }
+          }
+        }
+      }
+
+      // Animate if we have an active animation
+      if (animationStartRef.current) {
+        const elapsed = now - animationStartRef.current.startTime;
+        const progress = Math.min(elapsed / animationDuration, 1);
+
+        if (progress < 1) {
+          // Ease-out function for smooth deceleration
+          const eased = 1 - Math.pow(1 - progress, 3);
+          const animatedPrice =
+            animationStartRef.current.startPrice +
+            (animationStartRef.current.targetPrice - animationStartRef.current.startPrice) * eased;
+
+          animatedPriceRef.current = animatedPrice;
+
+          // Throttle state updates to avoid too many re-renders (update every 33ms = ~30fps for smooth but not excessive)
+          if (now - lastUpdateTimeRef2.current >= 33) {
+            if (priceHistory.length > 0) {
+              const lastPoint = priceHistory[priceHistory.length - 1];
+              setAnimatedLastPoint({
+                price: animatedPrice,
+                time: lastPoint.time,
+                timestamp: lastPoint.timestamp,
+              });
+            }
+            lastUpdateTimeRef2.current = now;
+          }
+        } else {
+          // Animation reached target - update ref but keep animating if target changed
+          animatedPriceRef.current = animationStartRef.current.targetPrice;
+          
+          // Update state
+          if (priceHistory.length > 0) {
+            const lastPoint = priceHistory[priceHistory.length - 1];
+            setAnimatedLastPoint({
+              price: animationStartRef.current.targetPrice,
+              time: lastPoint.time,
+              timestamp: lastPoint.timestamp,
+            });
+          }
+
+          // Check if target changed - if so, continue animating
+          if (currentTargetPriceRef.current !== null &&
+              Math.abs(currentTargetPriceRef.current - animationStartRef.current.targetPrice) > 0.01) {
+            animationStartRef.current = {
+              startPrice: animationStartRef.current.targetPrice,
+              targetPrice: currentTargetPriceRef.current,
+              startTime: now,
+            };
+          } else {
+            // No new target, but keep animation ref ready
+            animationStartRef.current = null;
+          }
+        }
+      }
+
+      // Always continue animation loop
+      animationRef.current = requestAnimationFrame(animate);
+    };
+
+    animationRef.current = requestAnimationFrame(animate);
+
+    return () => {
+      if (animationRef.current) {
+        cancelAnimationFrame(animationRef.current);
+        animationRef.current = null;
+      }
+    };
+  }, [priceHistory]);
+
+  // Update target price immediately for continuous animation (no throttle)
   useEffect(() => {
     if (rtds.lastPrice !== null) {
-      const now = new Date();
-      const timestamp = now.getTime();
-      const timeString = now.toLocaleTimeString("en-US", {
+      currentTargetPriceRef.current = rtds.lastPrice;
+      
+      // Initialize animated price if not set
+      if (animatedPriceRef.current === null && priceHistory.length > 0) {
+        animatedPriceRef.current = priceHistory[priceHistory.length - 1].price;
+      } else if (animatedPriceRef.current === null) {
+        animatedPriceRef.current = rtds.lastPrice;
+      }
+    }
+  }, [rtds.lastPrice, priceHistory]);
+
+  // Throttled update function - adds data points but animation runs continuously
+  const updatePriceHistory = useCallback(() => {
+    if (pendingUpdateRef.current) {
+      const update = pendingUpdateRef.current;
+      
+      // Always add to history (animation handles the smooth transition)
+      setPriceHistory((prev) => {
+        // If we have animated point, replace last point, otherwise append
+        if (animatedLastPoint && prev.length > 0) {
+          const newHistory = [
+            ...prev.slice(0, -1),
+            {
+              price: update.price,
+              time: update.time,
+              timestamp: update.timestamp,
+            },
+          ];
+          return newHistory.slice(-maxDataPoints);
+        } else {
+          const newHistory = [
+            ...prev,
+            update,
+          ];
+          return newHistory.slice(-maxDataPoints);
+        }
+      });
+      
+      pendingUpdateRef.current = null;
+      lastUpdateTimeRef.current = Date.now();
+    }
+    animationFrameRef.current = null;
+  }, [animatedLastPoint]);
+
+  // Update price history when new price comes in (throttled for data points, but animation is immediate)
+  useEffect(() => {
+    if (rtds.lastPrice !== null) {
+      const now = Date.now();
+      const timeString = new Date().toLocaleTimeString("en-US", {
         hour: "numeric",
         minute: "2-digit",
         second: "2-digit",
         hour12: true,
       });
 
-      setPriceHistory((prev) => {
-        const newHistory = [
-          ...prev,
-          { time: timeString, price: rtds.lastPrice!, timestamp },
-        ];
-        // Keep only the last maxDataPoints
-        return newHistory.slice(-maxDataPoints);
-      });
+      // Store pending update for data point addition (throttled)
+      pendingUpdateRef.current = {
+        time: timeString,
+        price: rtds.lastPrice,
+        timestamp: now,
+      };
+
+      // Update target price immediately for continuous animation (no throttle)
+      currentTargetPriceRef.current = rtds.lastPrice;
+
+      // Throttle data point additions: only add to history if enough time has passed
+      const timeSinceLastUpdate = now - lastUpdateTimeRef.current;
+      if (timeSinceLastUpdate >= updateThrottleMs) {
+        // Update immediately if enough time has passed
+        updatePriceHistory();
+      } else if (!animationFrameRef.current) {
+        // Schedule update for next animation frame if not already scheduled
+        animationFrameRef.current = requestAnimationFrame(() => {
+          const timeSinceLastUpdate = Date.now() - lastUpdateTimeRef.current;
+          if (timeSinceLastUpdate >= updateThrottleMs) {
+            updatePriceHistory();
+          } else {
+            // Wait a bit more
+            setTimeout(updatePriceHistory, updateThrottleMs - timeSinceLastUpdate);
+          }
+        });
+      }
     }
-  }, [rtds.lastPrice]);
+
+    return () => {
+      if (animationFrameRef.current) {
+        cancelAnimationFrame(animationFrameRef.current);
+        animationFrameRef.current = null;
+      }
+    };
+  }, [rtds.lastPrice, updatePriceHistory]);
 
   // Use price history or fallback to sample data
-  const dataPoints = priceHistory.length > 0 
+  const baseDataPoints = priceHistory.length > 0 
     ? priceHistory 
     : [
         { time: "7:26:36 PM", price: 88635, timestamp: Date.now() },
@@ -68,6 +268,17 @@ export default function PriceChart() {
         { time: "7:26:54 PM", price: 88645, timestamp: Date.now() },
         { time: "7:27:00 PM", price: 88637, timestamp: Date.now() },
       ];
+
+  // Replace last point with animated version if animation is active
+  const dataPoints = useMemo(() => {
+    if (animatedLastPoint && baseDataPoints.length > 0) {
+      return [
+        ...baseDataPoints.slice(0, -1),
+        animatedLastPoint,
+      ];
+    }
+    return baseDataPoints;
+  }, [baseDataPoints, animatedLastPoint]);
 
   // Calculate price range from actual data points only (exclude reference price from range)
   // This makes small price movements more visible
@@ -96,72 +307,67 @@ export default function PriceChart() {
   const chartAreaWidth = chartWidth - padding.left - padding.right;
   const chartAreaHeight = chartHeight - padding.top - padding.bottom;
 
-  // Helper function to convert price to Y coordinate
-  const priceToY = (price: number) => {
-    return chartHeight - padding.bottom - ((price - minPrice) / priceRange) * chartAreaHeight;
-  };
+  // Memoize helper functions and calculations
+  const priceToY = useCallback((price: number, min: number, max: number, range: number) => {
+    return chartHeight - padding.bottom - ((price - min) / range) * chartAreaHeight;
+  }, [chartHeight, padding, chartAreaHeight]);
 
-  // Helper function to convert index to X coordinate
-  const indexToX = (index: number) => {
-    if (dataPoints.length <= 1) return padding.left;
-    return padding.left + (index / (dataPoints.length - 1)) * chartAreaWidth;
-  };
+  const indexToX = useCallback((index: number, total: number) => {
+    if (total <= 1) return padding.left;
+    return padding.left + (index / (total - 1)) * chartAreaWidth;
+  }, [padding, chartAreaWidth]);
 
-  // Generate smooth curve path using quadratic bezier curves
-  const generateSmoothPath = () => {
+  // Memoize smooth path generation
+  const smoothPath = useMemo(() => {
     if (dataPoints.length < 2) return "";
     if (dataPoints.length === 2) {
-      // Simple line for 2 points
-      return `M ${indexToX(0)} ${priceToY(dataPoints[0].price)} L ${indexToX(1)} ${priceToY(dataPoints[1].price)}`;
+      return `M ${indexToX(0, dataPoints.length)} ${priceToY(dataPoints[0].price, minPrice, maxPrice, priceRange)} L ${indexToX(1, dataPoints.length)} ${priceToY(dataPoints[1].price, minPrice, maxPrice, priceRange)}`;
     }
     
-    let path = `M ${indexToX(0)} ${priceToY(dataPoints[0].price)}`;
+    let path = `M ${indexToX(0, dataPoints.length)} ${priceToY(dataPoints[0].price, minPrice, maxPrice, priceRange)}`;
     
     for (let i = 1; i < dataPoints.length; i++) {
-      const x0 = indexToX(i - 1);
-      const y0 = priceToY(dataPoints[i - 1].price);
-      const x1 = indexToX(i);
-      const y1 = priceToY(dataPoints[i].price);
+      const x0 = indexToX(i - 1, dataPoints.length);
+      const y0 = priceToY(dataPoints[i - 1].price, minPrice, maxPrice, priceRange);
+      const x1 = indexToX(i, dataPoints.length);
+      const y1 = priceToY(dataPoints[i].price, minPrice, maxPrice, priceRange);
       
       if (i === 1) {
-        // First curve: smooth transition from first point
-        const x2 = indexToX(i + 1 < dataPoints.length ? i + 1 : i);
-        const y2 = priceToY(dataPoints[i + 1 < dataPoints.length ? i + 1 : i].price);
+        const x2 = indexToX(i + 1 < dataPoints.length ? i + 1 : i, dataPoints.length);
+        const y2 = priceToY(dataPoints[i + 1 < dataPoints.length ? i + 1 : i].price, minPrice, maxPrice, priceRange);
         const cp1x = x0 + (x1 - x0) * 0.5;
         const cp1y = y0 + (y1 - y0) * 0.5;
         path += ` Q ${cp1x} ${cp1y} ${(x1 + x2) / 2} ${(y1 + y2) / 2}`;
       } else if (i === dataPoints.length - 1) {
-        // Last segment: draw to final point
-        const xPrev = indexToX(i - 2);
-        const yPrev = priceToY(dataPoints[i - 2].price);
+        const xPrev = indexToX(i - 2, dataPoints.length);
+        const yPrev = priceToY(dataPoints[i - 2].price, minPrice, maxPrice, priceRange);
         const cp1x = x0 + (x1 - xPrev) * 0.3;
         const cp1y = y0 + (y1 - yPrev) * 0.3;
         path += ` Q ${cp1x} ${cp1y} ${x1} ${y1}`;
       } else {
-        // Middle segments: smooth curves
-        const x2 = indexToX(i + 1);
-        const y2 = priceToY(dataPoints[i + 1].price);
-        const cp1x = x0 + (x1 - (i > 1 ? indexToX(i - 2) : x0)) * 0.3;
-        const cp1y = y0 + (y1 - (i > 1 ? priceToY(dataPoints[i - 2].price) : y0)) * 0.3;
+        const x2 = indexToX(i + 1, dataPoints.length);
+        const y2 = priceToY(dataPoints[i + 1].price, minPrice, maxPrice, priceRange);
+        const cp1x = x0 + (x1 - (i > 1 ? indexToX(i - 2, dataPoints.length) : x0)) * 0.3;
+        const cp1y = y0 + (y1 - (i > 1 ? priceToY(dataPoints[i - 2].price, minPrice, maxPrice, priceRange) : y0)) * 0.3;
         path += ` Q ${cp1x} ${cp1y} ${(x1 + x2) / 2} ${(y1 + y2) / 2}`;
       }
     }
     
     return path;
-  };
+  }, [dataPoints, minPrice, maxPrice, priceRange, indexToX, priceToY]);
 
-  // Generate area path for gradient fill
-  const generateAreaPath = () => {
+  // Memoize area path
+  const areaPath = useMemo(() => {
     if (dataPoints.length < 2) return "";
-    const linePath = generateSmoothPath();
-    const lastX = indexToX(dataPoints.length - 1);
-    const firstX = indexToX(0);
+    const linePath = smoothPath;
+    const lastX = indexToX(dataPoints.length - 1, dataPoints.length);
+    const firstX = indexToX(0, dataPoints.length);
     const baseY = chartHeight - padding.bottom;
     return `${linePath} L ${lastX} ${baseY} L ${firstX} ${baseY} Z`;
-  };
+  }, [smoothPath, dataPoints.length, indexToX, chartHeight, padding]);
 
-  // Handle mouse move for tooltip
-  const handleMouseMove = (e: React.MouseEvent<SVGSVGElement>) => {
+  // Handle mouse move for tooltip (throttled for performance)
+  const handleMouseMove = useCallback((e: React.MouseEvent<SVGSVGElement>) => {
     if (!svgRef.current || dataPoints.length === 0) return;
     
     const rect = svgRef.current.getBoundingClientRect();
@@ -170,10 +376,10 @@ export default function PriceChart() {
     
     // Find closest data point
     let closestIndex = 0;
-    let minDistance = Math.abs(svgX - indexToX(0));
+    let minDistance = Math.abs(svgX - indexToX(0, dataPoints.length));
     
     for (let i = 1; i < dataPoints.length; i++) {
-      const distance = Math.abs(svgX - indexToX(i));
+      const distance = Math.abs(svgX - indexToX(i, dataPoints.length));
       if (distance < minDistance) {
         minDistance = distance;
         closestIndex = i;
@@ -181,15 +387,15 @@ export default function PriceChart() {
     }
     
     const point = dataPoints[closestIndex];
-    const pointX = indexToX(closestIndex);
-    const pointY = priceToY(point.price);
+    const pointX = indexToX(closestIndex, dataPoints.length);
+    const pointY = priceToY(point.price, minPrice, maxPrice, priceRange);
     
     setHoveredPoint({
       x: pointX,
       y: pointY,
       data: point,
     });
-  };
+  }, [dataPoints, minPrice, maxPrice, priceRange, indexToX, priceToY]);
 
   const handleMouseLeave = () => {
     setHoveredPoint(null);
@@ -271,7 +477,7 @@ export default function PriceChart() {
             <g>
               {/* Only draw line if it's within reasonable bounds (even if slightly outside visible range) */}
               {(() => {
-                const refY = priceToY(referencePrice);
+                const refY = priceToY(referencePrice, minPrice, maxPrice, priceRange);
                 return refY >= -50 && refY <= chartHeight + 50 && (
                   <line
                     x1={padding.left}
@@ -287,7 +493,7 @@ export default function PriceChart() {
               })()}
               {/* Show label if reference price is close to visible range */}
               {(() => {
-                const refY = priceToY(referencePrice);
+                const refY = priceToY(referencePrice, minPrice, maxPrice, priceRange);
                 return refY >= -100 && refY <= chartHeight + 100 && (
                   <text
                     x={padding.left + 5}
@@ -307,34 +513,36 @@ export default function PriceChart() {
           {dataPoints.length > 1 && (
             <defs>
               <linearGradient id="chartGradient" x1="0%" y1="0%" x2="0%" y2="100%">
-                <stop offset="0%" stopColor="#f97316" stopOpacity="0.3" />
-                <stop offset="100%" stopColor="#f97316" stopOpacity="0.05" />
+                <stop offset="0%" stopColor={priceChange !== null && priceChange >= 0 ? "#22c55e" : "#ef4444"} stopOpacity="0.3" />
+                <stop offset="100%" stopColor={priceChange !== null && priceChange >= 0 ? "#22c55e" : "#ef4444"} stopOpacity="0.05" />
               </linearGradient>
             </defs>
           )}
           {dataPoints.length > 1 && (
             <path
-              d={generateAreaPath()}
+              d={areaPath}
               fill="url(#chartGradient)"
+              style={{ transition: "d 0.3s ease-out" }}
             />
           )}
 
           {/* Chart line (smooth curve) */}
           {dataPoints.length > 1 && (
             <path
-              d={generateSmoothPath()}
+              d={smoothPath}
               fill="none"
               stroke={priceChange !== null && priceChange >= 0 ? "#22c55e" : "#ef4444"}
               strokeWidth="2.5"
               strokeLinecap="round"
               strokeLinejoin="round"
+              style={{ transition: "d 0.3s ease-out" }}
             />
           )}
 
           {/* Data points */}
           {dataPoints.map((point, i) => {
-            const x = indexToX(i);
-            const y = priceToY(point.price);
+            const x = indexToX(i, dataPoints.length);
+            const y = priceToY(point.price, minPrice, maxPrice, priceRange);
             const isLast = i === dataPoints.length - 1;
             
             return (
@@ -507,25 +715,6 @@ export default function PriceChart() {
         </div>
       )}
 
-      {/* Time Range Selector */}
-      <div className="mt-4 flex flex-wrap items-center gap-2 border-t border-zinc-800 pt-4">
-        {timeRanges.map((range, i) => (
-          <button
-            key={i}
-            className={`rounded px-2 py-1 text-xs font-medium transition-colors sm:px-3 sm:text-sm ${
-              i === 0
-                ? "bg-zinc-800 text-white"
-                : "text-zinc-400 hover:bg-zinc-800 hover:text-white"
-            }`}
-          >
-            {range}
-          </button>
-        ))}
-        <div className="ml-auto flex items-center gap-2">
-          <div className="h-2 w-2 rounded-full bg-red-500"></div>
-          <div className="h-2 w-2 rounded-full bg-green-500"></div>
-        </div>
-      </div>
     </div>
   );
 }
