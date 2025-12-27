@@ -59,7 +59,20 @@ export function useRTDS() {
 
       ws.onmessage = (event) => {
         try {
-          const data = JSON.parse(event.data);
+          // Check if message is empty or not a string
+          if (!event.data || typeof event.data !== "string") {
+            console.log("RTDS received non-string or empty message:", event.data);
+            return;
+          }
+
+          // Trim whitespace and check if empty
+          const trimmedData = event.data.trim();
+          if (!trimmedData) {
+            console.log("RTDS received empty message");
+            return;
+          }
+
+          const data = JSON.parse(trimmedData);
           console.log("RTDS message received:", data);
 
           // Handle price updates
@@ -75,7 +88,12 @@ export function useRTDS() {
             }
           }
         } catch (error) {
-          console.error("Error parsing RTDS message:", error);
+          // Only log if it's not an empty/invalid JSON error
+          if (error instanceof SyntaxError) {
+            console.warn("RTDS received invalid JSON:", event.data);
+          } else {
+            console.error("Error parsing RTDS message:", error, event.data);
+          }
         }
       };
 
