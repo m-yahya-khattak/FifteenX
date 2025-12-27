@@ -1,4 +1,5 @@
 import Header from "./components/Header";
+import DevTools from "./components/DevTools";
 import MarketHeader from "./components/MarketHeader";
 import PriceChart from "./components/PriceChart";
 import OrderBook from "./components/OrderBook";
@@ -31,6 +32,7 @@ export default function Home() {
           </div>
         </div>
       </div>
+      <DevTools />
     </div>
   );
 }
