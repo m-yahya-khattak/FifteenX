@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { findActiveMarket, extractTimestampFromSlug, fetchHistoricalBTCPrice } from "../../lib/marketUtils";
+import { findActiveMarket, extractTimestampFromSlug, fetchHistoricalBTCPrice, fetchPolymarketCryptoPrice } from "../../lib/marketUtils";
 
 /**
  * Deep search for reference price in nested API response
@@ -20,43 +20,33 @@ function findReferencePrice(data: any): number | null {
     if (data[field] !== undefined && data[field] !== null) {
       const value = parseFloat(data[field]);
       if (!isNaN(value) && value > 0) {
-        console.log(`Found referencePrice in direct field: ${field} = ${value}`);
-        return value;
+          return value;
       }
     }
   }
 
-  // Check condition object deeply
-  if (data.condition) {
-    console.log("=== SEARCHING CONDITION OBJECT ===");
-    console.log("Condition keys:", Object.keys(data.condition));
-    console.log("Condition:", JSON.stringify(data.condition, null, 2));
-    
-    for (const field of directFields) {
-      if (data.condition[field] !== undefined && data.condition[field] !== null) {
-        const value = parseFloat(data.condition[field]);
+    // Check condition object deeply
+    if (data.condition) {
+      for (const field of directFields) {
+        if (data.condition[field] !== undefined && data.condition[field] !== null) {
+          const value = parseFloat(data.condition[field]);
+          if (!isNaN(value) && value > 0) {
+            return value;
+          }
+        }
+      }
+
+      // Check for scalar market fields in condition
+      if (data.condition.scalarDenomination) {
+        const value = parseFloat(data.condition.scalarDenomination);
         if (!isNaN(value) && value > 0) {
-          console.log(`Found referencePrice in condition.${field} = ${value}`);
           return value;
         }
       }
     }
 
-    // Check for scalar market fields in condition
-    if (data.condition.scalarDenomination) {
-      const value = parseFloat(data.condition.scalarDenomination);
-      if (!isNaN(value) && value > 0) {
-        console.log(`Found referencePrice in condition.scalarDenomination = ${value}`);
-        return value;
-      }
-    }
-  }
-
   // Check outcomes array
   if (Array.isArray(data.outcomes) && data.outcomes.length > 0) {
-    console.log("=== SEARCHING OUTCOMES ARRAY ===");
-    console.log("Outcomes:", JSON.stringify(data.outcomes, null, 2));
-    
     for (let i = 0; i < data.outcomes.length; i++) {
       const outcome = data.outcomes[i];
       if (outcome && typeof outcome === 'object') {
@@ -64,14 +54,12 @@ function findReferencePrice(data: any): number | null {
         if (outcome.price !== undefined) {
           const value = parseFloat(outcome.price);
           if (!isNaN(value) && value > 0) {
-            console.log(`Found price in outcomes[${i}].price = ${value}`);
             // For binary markets, might need to check both outcomes
           }
         }
         if (outcome.scalarValue !== undefined) {
           const value = parseFloat(outcome.scalarValue);
           if (!isNaN(value) && value > 0) {
-            console.log(`Found scalarValue in outcomes[${i}].scalarValue = ${value}`);
           }
         }
       }
@@ -80,15 +68,11 @@ function findReferencePrice(data: any): number | null {
 
   // Check resolutionSource
   if (data.resolutionSource) {
-    console.log("=== SEARCHING RESOLUTION SOURCE ===");
-    console.log("ResolutionSource:", JSON.stringify(data.resolutionSource, null, 2));
-    
     if (typeof data.resolutionSource === 'object') {
       for (const field of directFields) {
         if (data.resolutionSource[field] !== undefined && data.resolutionSource[field] !== null) {
           const value = parseFloat(data.resolutionSource[field]);
           if (!isNaN(value) && value > 0) {
-            console.log(`Found referencePrice in resolutionSource.${field} = ${value}`);
             return value;
           }
         }
@@ -100,33 +84,19 @@ function findReferencePrice(data: any): number | null {
   if (data.scalarDenomination !== undefined) {
     const value = parseFloat(data.scalarDenomination);
     if (!isNaN(value) && value > 0) {
-      console.log(`Found referencePrice in scalarDenomination = ${value}`);
       return value;
     }
   }
 
   // Check metadata or additional fields
   if (data.metadata && typeof data.metadata === 'object') {
-    console.log("=== SEARCHING METADATA ===");
-    console.log("Metadata:", JSON.stringify(data.metadata, null, 2));
-    
     for (const field of directFields) {
       if (data.metadata[field] !== undefined && data.metadata[field] !== null) {
         const value = parseFloat(data.metadata[field]);
         if (!isNaN(value) && value > 0) {
-          console.log(`Found referencePrice in metadata.${field} = ${value}`);
           return value;
         }
       }
-    }
-  }
-
-  // Check all top-level numeric fields that might be price-related
-  console.log("=== CHECKING ALL NUMERIC FIELDS ===");
-  for (const key in data) {
-    if (data.hasOwnProperty(key) && typeof data[key] === 'number' && data[key] > 1000 && data[key] < 1000000) {
-      // Likely a price value (between $1k and $1M for BTC)
-      console.log(`Potential price field: ${key} = ${data[key]}`);
     }
   }
 
@@ -146,12 +116,9 @@ export async function GET(request: Request) {
     }
 
     // Find the active 15-minute BTC market
-    console.log("=== FINDING ACTIVE 15-MINUTE BTC MARKET ===");
     const result = await findActiveMarket();
 
     if (!result.success || !('market' in result) || !result.market) {
-      console.log("=== NO ACTIVE MARKET FOUND ===");
-      console.log("Error:", 'error' in result ? result.error : "Unknown error");
       return NextResponse.json({
         success: false,
         error: ('error' in result ? result.error : "No active 15-minute BTC market found") as string,
@@ -159,17 +126,43 @@ export async function GET(request: Request) {
     }
 
     const data = result.market;
-    
-    console.log("=== RAW GAMMA API RESPONSE ===");
-    console.log("Data Type:", typeof data);
-    console.log("Object keys:", data ? Object.keys(data) : "N/A");
-    console.log("Full Response:", JSON.stringify(data, null, 2));
 
-    // Deep search for reference price in API response
-    console.log("\n=== DEEP SEARCHING FOR REFERENCE PRICE ===");
+    // Calculate exact 15-minute boundary times from slug timestamp
+    // This ensures we use the correct times that match Polymarket's market windows
+    let calculatedStartTime: string | undefined;
+    let calculatedEndTime: string | undefined;
+    const slug = data.slug || result.slug;
+    
+    if (slug) {
+      const timestamp = extractTimestampFromSlug(slug);
+      if (timestamp) {
+        // Start time is the timestamp (15-minute boundary)
+        calculatedStartTime = new Date(timestamp * 1000).toISOString();
+        // End time is 15 minutes later (900 seconds)
+        calculatedEndTime = new Date((timestamp + 900) * 1000).toISOString();
+      }
+    }
+    
+    // Use calculated times if available, otherwise fall back to API times
+    const startTime = calculatedStartTime || data.startDate || data.start_time || data.createdAt;
+    const endTime = calculatedEndTime || data.endDate || data.end_time;
+    
+    // Priority 1: Try Polymarket crypto-price API (official endpoint for price to beat)
+    let polymarketPrice: number | null = null;
+    let polymarketSource = "none";
+    
+    if (startTime && endTime) {
+      const polymarketResult = await fetchPolymarketCryptoPrice(startTime, endTime);
+      if (polymarketResult.success && polymarketResult.price) {
+        polymarketPrice = polymarketResult.price;
+        polymarketSource = polymarketResult.source;
+      }
+    }
+    
+    // Priority 2: Deep search for reference price in API response
     const foundReferencePrice = findReferencePrice(data);
     
-    // Try fallback fields if deep search didn't find it
+    // Priority 3: Try fallback fields if deep search didn't find it
     const fallbackPrice = data.referencePrice || 
                          data.reference_price || 
                          data.priceToBeat || 
@@ -182,15 +175,13 @@ export async function GET(request: Request) {
                          data.condition?.priceToBeat ||
                          null;
     
-    // Extract timestamp from slug to fetch historical price
+    // Priority 4: Extract timestamp from slug to fetch historical price
     let historicalPrice: number | null = null;
     let historicalSource = "none";
-    const slug = data.slug || result.slug;
     
-    if (slug) {
+    if (slug && !polymarketPrice) {
       const timestamp = extractTimestampFromSlug(slug);
       if (timestamp) {
-        console.log(`\n=== FETCHING HISTORICAL PRICE FOR TIMESTAMP ===`);
         const historicalResult = await fetchHistoricalBTCPrice(timestamp);
         if (historicalResult.success && historicalResult.price) {
           historicalPrice = historicalResult.price;
@@ -199,11 +190,13 @@ export async function GET(request: Request) {
       }
     }
     
-    // Priority: API response > Historical price > Fallback
-    const finalReferencePrice = foundReferencePrice || historicalPrice || fallbackPrice;
+    // Priority order: Polymarket API > Deep search > Historical > Fallback
+    const finalReferencePrice = polymarketPrice || foundReferencePrice || historicalPrice || fallbackPrice;
     const priceFound = finalReferencePrice !== null;
     let priceSource = "none";
-    if (foundReferencePrice) {
+    if (polymarketPrice) {
+      priceSource = polymarketSource;
+    } else if (foundReferencePrice) {
       priceSource = "api_deep_search";
     } else if (historicalPrice) {
       priceSource = `historical_${historicalSource}`;
@@ -211,12 +204,28 @@ export async function GET(request: Request) {
       priceSource = "api_fallback";
     }
 
-    console.log(`\n=== REFERENCE PRICE RESULT ===`);
-    console.log(`Found: ${priceFound}`);
-    console.log(`Value: ${finalReferencePrice}`);
-    console.log(`Source: ${priceSource}`);
-    if (historicalPrice) {
-      console.log(`Historical price (${historicalSource}): $${historicalPrice}`);
+    // Extract event ID (parent event for comments)
+    // Comments are typically on the parent event, not individual 15-minute markets
+    const eventId = data.eventId || 
+                    data.event_id || 
+                    data.event?.id ||
+                    data.event?.eventId ||
+                    data.parentEventId ||
+                    data.parent_event_id ||
+                    data.condition?.eventId ||
+                    data.condition?.event_id ||
+                    null;
+
+    // Extract asset IDs (clobTokenIds) for orderbook
+    let assetIds: string[] = [];
+    if (data.clobTokenIds) {
+      try {
+        assetIds = typeof data.clobTokenIds === 'string' 
+          ? JSON.parse(data.clobTokenIds)
+          : data.clobTokenIds;
+      } catch {
+        assetIds = Array.isArray(data.clobTokenIds) ? data.clobTokenIds : [];
+      }
     }
 
     // Map Gamma API response to our format
@@ -225,13 +234,15 @@ export async function GET(request: Request) {
       slug: data.slug || result.slug,
       title: data.question || data.title || "Bitcoin Up or Down",
       description: data.description || "",
-      startTime: data.startDate || data.start_time || data.createdAt,
-      endTime: data.endDate || data.end_time,
+      startTime: calculatedStartTime || data.startDate || data.start_time || data.createdAt,
+      endTime: calculatedEndTime || data.endDate || data.end_time,
       resolutionSource: data.resolutionSource || data.resolution_source,
       volume: data.volume || 0,
       liquidity: data.liquidity || 0,
       outcomes: data.outcomes || [],
       condition: data.condition || {},
+      eventId: eventId, // Parent event ID for comments
+      assetIds: assetIds, // Asset IDs for CLOB orderbook
       referencePrice: finalReferencePrice,
       referencePriceStatus: {
         found: priceFound,
@@ -242,20 +253,12 @@ export async function GET(request: Request) {
       raw: data,
     };
 
-    console.log("\n=== MAPPED MARKET DATA ===");
-    console.log("Market:", JSON.stringify(market, null, 2));
-
     return NextResponse.json({
       success: true,
       market: market,
       markets: [market], // Return as array for consistency
     });
   } catch (error) {
-    console.log("=== EXCEPTION CAUGHT ===");
-    console.log("Error:", error);
-    console.log("Error Message:", error instanceof Error ? error.message : "Unknown error");
-    console.log("Error Stack:", error instanceof Error ? error.stack : "N/A");
-    
     return NextResponse.json(
       {
         success: false,

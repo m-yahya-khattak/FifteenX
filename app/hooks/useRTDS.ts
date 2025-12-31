@@ -13,7 +13,9 @@ interface PriceUpdate {
   };
 }
 
-export function useRTDS() {
+export type PriceSource = "chainlink" | "binance";
+
+export function useRTDS(source: PriceSource = "chainlink") {
   const [isConnected, setIsConnected] = useState(false);
   const [connectionStatus, setConnectionStatus] = useState<
     "disconnected" | "connecting" | "connected" | "error"
@@ -22,6 +24,44 @@ export function useRTDS() {
   const wsRef = useRef<WebSocket | null>(null);
   const reconnectTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const reconnectAttempts = useRef(0);
+  const currentSourceRef = useRef<PriceSource>(source);
+
+  // Function to subscribe to a specific source
+  const subscribeToSource = (priceSource: PriceSource) => {
+    if (!wsRef.current || wsRef.current.readyState !== WebSocket.OPEN) {
+      return;
+    }
+
+    let subscribeMessage;
+    
+    if (priceSource === "chainlink") {
+      subscribeMessage = {
+        action: "subscribe",
+        subscriptions: [
+          {
+            topic: "crypto_prices_chainlink",
+            type: "*",
+            filters: '{"symbol":"btc/usd"}',
+          },
+        ],
+      };
+    } else {
+      // Binance
+      subscribeMessage = {
+        action: "subscribe",
+        subscriptions: [
+          {
+            topic: "crypto_prices",
+            type: "update",
+            filters: "btcusdt",
+          },
+        ],
+      };
+    }
+
+    wsRef.current.send(JSON.stringify(subscribeMessage));
+    currentSourceRef.current = priceSource;
+  };
 
   const connect = () => {
     if (wsRef.current?.readyState === WebSocket.OPEN) {
@@ -29,53 +69,36 @@ export function useRTDS() {
     }
 
     setConnectionStatus("connecting");
-    console.log("Connecting to RTDS...");
 
     try {
       const ws = new WebSocket("wss://ws-live-data.polymarket.com");
       wsRef.current = ws;
 
       ws.onopen = () => {
-        console.log("RTDS WebSocket connected");
         setIsConnected(true);
         setConnectionStatus("connected");
         reconnectAttempts.current = 0;
 
-        // Subscribe to Chainlink BTC/USD prices
-        const subscribeMessage = {
-          action: "subscribe",
-          subscriptions: [
-            {
-              topic: "crypto_prices_chainlink",
-              type: "*",
-              filters: '{"symbol":"btc/usd"}',
-            },
-          ],
-        };
-
-        console.log("Subscribing to crypto_prices_chainlink:", subscribeMessage);
-        ws.send(JSON.stringify(subscribeMessage));
+        // Subscribe to selected source
+        subscribeToSource(source);
       };
 
       ws.onmessage = (event) => {
         try {
           // Check if message is empty or not a string
           if (!event.data || typeof event.data !== "string") {
-            console.log("RTDS received non-string or empty message:", event.data);
             return;
           }
 
           // Trim whitespace and check if empty
           const trimmedData = event.data.trim();
           if (!trimmedData) {
-            console.log("RTDS received empty message");
             return;
           }
 
           const data = JSON.parse(trimmedData);
-          console.log("RTDS message received:", data);
 
-          // Handle price updates
+          // Handle Chainlink price updates
           if (
             data.topic === "crypto_prices_chainlink" &&
             data.type === "update" &&
@@ -84,27 +107,31 @@ export function useRTDS() {
             const priceUpdate = data as PriceUpdate;
             if (priceUpdate.payload.symbol === "btc/usd") {
               setLastPrice(priceUpdate.payload.value);
-              console.log("BTC/USD price update:", priceUpdate.payload.value);
+            }
+          }
+          
+          // Handle Binance price updates
+          if (
+            data.topic === "crypto_prices" &&
+            data.type === "update" &&
+            data.payload
+          ) {
+            const priceUpdate = data as PriceUpdate;
+            if (priceUpdate.payload.symbol === "btcusdt") {
+              setLastPrice(priceUpdate.payload.value);
             }
           }
         } catch (error) {
-          // Only log if it's not an empty/invalid JSON error
-          if (error instanceof SyntaxError) {
-            console.warn("RTDS received invalid JSON:", event.data);
-          } else {
-            console.error("Error parsing RTDS message:", error, event.data);
-          }
+          // Silently handle errors
         }
       };
 
       ws.onerror = (error) => {
-        console.error("RTDS WebSocket error:", error);
         setConnectionStatus("error");
         setIsConnected(false);
       };
 
       ws.onclose = () => {
-        console.log("RTDS WebSocket closed");
         setIsConnected(false);
         setConnectionStatus("disconnected");
 
@@ -112,18 +139,15 @@ export function useRTDS() {
         if (reconnectAttempts.current < 5) {
           const delay = Math.min(1000 * Math.pow(2, reconnectAttempts.current), 30000);
           reconnectAttempts.current++;
-          console.log(`Reconnecting in ${delay}ms (attempt ${reconnectAttempts.current})`);
 
           reconnectTimeoutRef.current = setTimeout(() => {
             connect();
           }, delay);
         } else {
-          console.log("Max reconnection attempts reached");
           setConnectionStatus("error");
         }
       };
     } catch (error) {
-      console.error("Failed to create WebSocket:", error);
       setConnectionStatus("error");
       setIsConnected(false);
     }
@@ -144,6 +168,16 @@ export function useRTDS() {
     setConnectionStatus("disconnected");
     reconnectAttempts.current = 0;
   };
+
+  // Subscribe when source changes (if already connected)
+  useEffect(() => {
+    if (wsRef.current?.readyState === WebSocket.OPEN && currentSourceRef.current !== source) {
+      // Source changed, send new subscription
+      subscribeToSource(source);
+      // Clear price when switching (will update when new data arrives)
+      setLastPrice(null);
+    }
+  }, [source]);
 
   useEffect(() => {
     connect();

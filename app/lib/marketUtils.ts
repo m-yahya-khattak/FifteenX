@@ -259,3 +259,79 @@ export async function fetchHistoricalBTCPrice(timestamp: number): Promise<{
   };
 }
 
+/**
+ * Fetch price to beat from Polymarket's crypto-price API
+ * This is the official endpoint for getting openPrice (price to beat) for 15-minute markets
+ */
+export async function fetchPolymarketCryptoPrice(
+  startTime: string,
+  endTime: string
+): Promise<{
+  success: boolean;
+  price: number | null;
+  source: string;
+  error?: string;
+}> {
+  try {
+    console.log(`\n=== FETCHING POLYMARKET CRYPTO PRICE ===`);
+    console.log(`Start Time: ${startTime}`);
+    console.log(`End Time: ${endTime}`);
+
+    // Format times to ISO 8601 UTC format
+    const startTimeISO = new Date(startTime).toISOString();
+    const endTimeISO = new Date(endTime).toISOString();
+
+    const url = `https://polymarket.com/api/crypto/crypto-price?symbol=BTC&eventStartTime=${encodeURIComponent(startTimeISO)}&variant=fifteen&endDate=${encodeURIComponent(endTimeISO)}`;
+    
+    console.log(`Polymarket crypto-price endpoint: ${url}`);
+    
+    const response = await fetch(url, {
+      cache: "no-store",
+      headers: {
+        "Accept": "application/json",
+      },
+    });
+
+    if (response.ok) {
+      const data = await response.json();
+      console.log("Polymarket crypto-price response:", JSON.stringify(data, null, 2));
+      
+      // Extract openPrice (this is the price to beat)
+      const openPrice = data?.openPrice;
+      
+      if (openPrice && !isNaN(openPrice) && openPrice > 0) {
+        console.log(`✓ Found price to beat from Polymarket crypto-price API: $${openPrice}`);
+        return {
+          success: true,
+          price: parseFloat(openPrice),
+          source: "polymarket_crypto_price",
+        };
+      } else {
+        console.log("✗ No valid openPrice in response");
+        return {
+          success: false,
+          price: null,
+          source: "polymarket_crypto_price",
+          error: "No valid openPrice in response",
+        };
+      }
+    } else {
+      console.log(`✗ Polymarket crypto-price API returned status: ${response.status}`);
+      return {
+        success: false,
+        price: null,
+        source: "polymarket_crypto_price",
+        error: `API returned status ${response.status}`,
+      };
+    }
+  } catch (error) {
+    console.log("✗ Polymarket crypto-price fetch failed:", error);
+    return {
+      success: false,
+      price: null,
+      source: "polymarket_crypto_price",
+      error: error instanceof Error ? error.message : "Unknown error",
+    };
+  }
+}
+

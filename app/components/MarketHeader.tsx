@@ -1,7 +1,7 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { useRTDS } from "../hooks/useRTDS";
+import { useEffect, useState, useRef } from "react";
+import { useRTDS, PriceSource } from "../hooks/useRTDS";
 
 interface MarketData {
   id?: string;
@@ -14,6 +14,8 @@ interface MarketData {
     found: boolean;
     source: string;
     value: number | null;
+    isRetrying?: boolean;
+    retryAttempts?: number;
   };
 }
 
@@ -22,9 +24,15 @@ export default function MarketHeader() {
   const [countdown, setCountdown] = useState<string>("");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const retryIntervalRef = useRef<NodeJS.Timeout | null>(null);
+  const retryAttemptsRef = useRef<number>(0);
+  const currentMarketIdRef = useRef<string | null>(null);
   
-  // Get real-time price from RTDS
-  const rtds = useRTDS();
+  // Price source switcher state
+  const [priceSource, setPriceSource] = useState<PriceSource>("chainlink");
+  
+  // Get real-time price from selected source
+  const rtds = useRTDS(priceSource);
   const currentPrice = rtds.lastPrice;
 
   // Format date to readable format in user's local timezone
@@ -124,8 +132,8 @@ export default function MarketHeader() {
     return current - reference;
   };
 
-  // Fetch market data
-  const fetchMarketData = async () => {
+  // Fetch market data (with optional retry flag)
+  const fetchMarketData = async (isRetry: boolean = false) => {
     try {
       // First, get list of markets to find a 15-minute BTC market
       const marketsResponse = await fetch("/api/markets?query=btc&limit=5");
@@ -138,6 +146,18 @@ export default function MarketHeader() {
       }
 
       const market = marketsData.market;
+      const marketId = market.id || market.slug;
+      
+      // Check if market changed - reset retry attempts
+      if (currentMarketIdRef.current !== marketId) {
+        currentMarketIdRef.current = marketId;
+        retryAttemptsRef.current = 0;
+        // Clear any existing retry interval
+        if (retryIntervalRef.current) {
+          clearInterval(retryIntervalRef.current);
+          retryIntervalRef.current = null;
+        }
+      }
       
       // Extract timestamp from slug (format: btc-updown-15m-{timestamp})
       // Calculate proper start/end times from the timestamp to ensure 15-minute boundaries
@@ -160,14 +180,34 @@ export default function MarketHeader() {
       // Remove pattern like " - December 27, 8:15AM-8:30AM ET" or similar
       cleanTitle = cleanTitle.replace(/\s*-\s*\w+\s+\d+,\s*\d+:\d+\w+-\d+:\d+\w+\s+\w+.*$/i, "").trim();
       
+      // Check if we got primary source (polymarket_crypto_price) or fallback
+      const isPrimarySource = market.referencePriceStatus?.source === "polymarket_crypto_price";
+      const isOnFallback = !isPrimarySource && market.referencePriceStatus?.found;
+      
+      // If retry succeeded (got primary source), stop retrying
+      if (isRetry && isPrimarySource) {
+        if (retryIntervalRef.current) {
+          clearInterval(retryIntervalRef.current);
+          retryIntervalRef.current = null;
+        }
+        retryAttemptsRef.current = 0;
+      }
+      
+      // Determine if we should continue retrying
+      const shouldRetry = isOnFallback && retryAttemptsRef.current < 4;
+      
       setMarketData({
-        id: market.id || market.slug,
+        id: marketId,
         title: cleanTitle,
         // Use calculated times from slug timestamp if available, otherwise fall back to API times
         startTime: calculatedStartTime || market.startTime || market.startDate || market.start_time || market.createdAt,
         endTime: calculatedEndTime || market.endTime || market.endDate || market.end_time,
         referencePrice: market.referencePrice || market.reference_price || market.price_to_beat || market.priceToBeat || null,
-        referencePriceStatus: market.referencePriceStatus,
+        referencePriceStatus: {
+          ...market.referencePriceStatus,
+          isRetrying: shouldRetry,
+          retryAttempts: retryAttemptsRef.current,
+        },
       });
 
       // Current price will come from RTDS hook automatically
@@ -181,6 +221,14 @@ export default function MarketHeader() {
   // Initial fetch
   useEffect(() => {
     fetchMarketData();
+    
+    // Cleanup on unmount
+    return () => {
+      if (retryIntervalRef.current) {
+        clearInterval(retryIntervalRef.current);
+        retryIntervalRef.current = null;
+      }
+    };
   }, []);
 
   // Update countdown every second and check for new market
@@ -192,7 +240,6 @@ export default function MarketHeader() {
         
         // If market has ended, fetch next market
         if (countdownValue === "Ended" || countdownValue === "") {
-          console.log("Market ended, fetching next market...");
           fetchMarketData();
         }
       }
@@ -209,7 +256,6 @@ export default function MarketHeader() {
         const now = new Date();
         // If market ended or will end soon, refresh
         if (end.getTime() <= now.getTime() + 60000) { // 1 minute before or after
-          console.log("Auto-refreshing market data...");
           fetchMarketData();
         }
       }
@@ -217,6 +263,36 @@ export default function MarketHeader() {
 
     return () => clearInterval(refreshInterval);
   }, [marketData?.endTime]);
+
+  // Retry logic: If on fallback, retry primary source every 3 minutes (max 4 attempts)
+  useEffect(() => {
+    // Clear any existing retry interval
+    if (retryIntervalRef.current) {
+      clearInterval(retryIntervalRef.current);
+      retryIntervalRef.current = null;
+    }
+
+    if (!marketData?.referencePriceStatus) return;
+
+    const isPrimarySource = marketData.referencePriceStatus.source === "polymarket_crypto_price";
+    const isOnFallback = !isPrimarySource && marketData.referencePriceStatus.found;
+    const shouldRetry = isOnFallback && retryAttemptsRef.current < 4;
+
+    if (shouldRetry) {
+      // Retry every 3 minutes (180000ms)
+      retryIntervalRef.current = setInterval(() => {
+        retryAttemptsRef.current++;
+        fetchMarketData(true); // Pass isRetry flag
+      }, 180000); // 3 minutes
+    }
+
+    return () => {
+      if (retryIntervalRef.current) {
+        clearInterval(retryIntervalRef.current);
+        retryIntervalRef.current = null;
+      }
+    };
+  }, [marketData?.referencePriceStatus?.source, marketData?.referencePriceStatus?.found]);
 
   // Price updates automatically from RTDS hook - no polling needed
 
@@ -268,20 +344,24 @@ export default function MarketHeader() {
             {marketData.referencePriceStatus && (
               <span
                 className={`text-[10px] px-1.5 py-0.5 rounded ${
-                  marketData.referencePriceStatus.source.startsWith("historical")
-                    ? "bg-blue-500/20 text-blue-400"
-                    : marketData.referencePriceStatus.found
+                  marketData.referencePriceStatus.source === "polymarket_crypto_price"
                     ? "bg-green-500/20 text-green-400"
-                    : "bg-yellow-500/20 text-yellow-400"
+                    : marketData.referencePriceStatus.source.startsWith("historical")
+                    ? "bg-blue-500/20 text-blue-400"
+                    : marketData.referencePriceStatus.isRetrying
+                    ? "bg-yellow-500/20 text-yellow-400"
+                    : "bg-zinc-500/20 text-zinc-400"
                 }`}
-                title={`Source: ${marketData.referencePriceStatus.source}`}
+                title={`Source: ${marketData.referencePriceStatus.source}${marketData.referencePriceStatus.isRetrying ? ` (Retrying ${marketData.referencePriceStatus.retryAttempts}/4)` : ""}`}
               >
-                {marketData.referencePriceStatus.source.startsWith("historical")
+                {marketData.referencePriceStatus.source === "polymarket_crypto_price"
+                  ? "✓ Primary"
+                  : marketData.referencePriceStatus.source.startsWith("historical")
                   ? marketData.referencePriceStatus.source.includes("chainlink")
                     ? "📊 Historical (Chainlink)"
                     : "📊 Historical (CoinGecko)"
-                  : marketData.referencePriceStatus.found
-                  ? "✓ Found"
+                  : marketData.referencePriceStatus.isRetrying
+                  ? `🔄 Retrying (${marketData.referencePriceStatus.retryAttempts}/4)`
                   : "⚠ Fallback"}
               </span>
             )}
@@ -307,7 +387,34 @@ export default function MarketHeader() {
           )}
         </div>
         <div className="text-left sm:text-right">
-          <div className="text-xs text-zinc-400">CURRENT PRICE</div>
+          <div className="flex items-center justify-between mb-2">
+            <div className="text-xs text-zinc-400">CURRENT PRICE</div>
+            {/* Price Source Switcher */}
+            <div className="flex items-center gap-1 rounded-lg bg-zinc-800 p-0.5">
+              <button
+                onClick={() => setPriceSource("chainlink")}
+                className={`px-2 py-1 text-xs font-medium rounded transition-colors ${
+                  priceSource === "chainlink"
+                    ? "bg-blue-600 text-white"
+                    : "text-zinc-400 hover:text-white"
+                }`}
+              >
+                Chainlink
+              </button>
+              <button
+                onClick={() => setPriceSource("binance")}
+                className={`px-2 py-1 text-xs font-medium rounded transition-colors ${
+                  priceSource === "binance"
+                    ? "bg-blue-600 text-white"
+                    : "text-zinc-400 hover:text-white"
+                }`}
+              >
+                Binance
+              </button>
+            </div>
+          </div>
+          
+          {/* Current Price Display */}
           <div className="flex items-center gap-2">
             <span className="text-lg font-bold text-white sm:text-xl">
               {currentPrice 
@@ -318,7 +425,19 @@ export default function MarketHeader() {
                 ? "Error"
                 : "Loading..."}
             </span>
-            {priceChangeFormatted && hasPriceChange && (
+            {rtds.connectionStatus === "connected" && currentPrice && (
+              <span className="text-[10px] text-green-400">●</span>
+            )}
+          </div>
+          
+          {/* Source Label */}
+          <div className="mt-1 text-[10px] text-zinc-500">
+            {priceSource === "chainlink" ? "Chainlink Price Feed" : "Binance Price Feed"}
+          </div>
+          
+          {/* Price Change from Reference */}
+          {priceChangeFormatted && hasPriceChange && (
+            <div className="mt-2 flex items-center gap-2">
               <span
                 className={`rounded px-2 py-1 text-xs font-semibold ${
                   priceChange! >= 0
@@ -328,11 +447,6 @@ export default function MarketHeader() {
               >
                 {priceChangeFormatted}
               </span>
-            )}
-          </div>
-          {rtds.connectionStatus === "connected" && currentPrice && (
-            <div className="mt-1 text-[10px] text-green-400">
-              Live
             </div>
           )}
         </div>

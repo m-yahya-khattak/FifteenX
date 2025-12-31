@@ -44,7 +44,7 @@ export default function CommentsSection() {
               : "border-transparent text-zinc-400 hover:text-white"
           }`}
         >
-          Comments (7,298)
+          Comments ({comments.length})
         </button>
         <button
           onClick={() => setActiveTab("holders")}
@@ -83,6 +83,7 @@ export default function CommentsSection() {
         <div className="mt-2 flex items-center gap-4">
           <select className="rounded-lg border border-zinc-800 bg-zinc-800 px-3 py-1 text-xs text-white focus:border-zinc-700 focus:outline-none">
             <option>Newest</option>
+            <option>Most liked</option>
           </select>
           <label className="flex items-center gap-2 text-xs text-zinc-400">
             <input type="checkbox" className="rounded" />
@@ -172,4 +173,3 @@ export default function CommentsSection() {
     </div>
   );
 }
-
