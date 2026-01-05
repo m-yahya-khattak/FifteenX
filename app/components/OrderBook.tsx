@@ -2,10 +2,13 @@
 
 import { useState, useEffect } from "react";
 import { useCLOBOrderBook } from "../hooks/useCLOBOrderBook";
+import { useVirtualTrading } from "../hooks/useVirtualTrading";
 
 interface MarketData {
   assetIds?: string[];
   conditionId?: string;
+  marketId?: string;
+  marketTitle?: string;
 }
 
 interface MarketDataWithTime extends MarketData {
@@ -16,6 +19,11 @@ interface MarketDataWithTime extends MarketData {
 export default function OrderBook() {
   const [activeTab, setActiveTab] = useState<"up" | "down">("up");
   const [marketData, setMarketData] = useState<MarketDataWithTime | null>(null);
+  const [quantity, setQuantity] = useState<string>("1");
+  const [tradeMessage, setTradeMessage] = useState<{ type: "success" | "error"; text: string } | null>(null);
+  
+  // Virtual trading hook
+  const { buy, sell, positions } = useVirtualTrading();
 
   // Fetch market data to get asset IDs
   const fetchMarketData = async () => {
@@ -31,6 +39,8 @@ export default function OrderBook() {
           conditionId: data.market.condition?.id || data.market.raw?.conditionId || null,
           endTime: data.market.endTime,
           startTime: data.market.startTime,
+          marketId: data.market.id || data.market.slug,
+          marketTitle: data.market.title || "Bitcoin Up or Down",
         });
       }
     } catch (error) {
@@ -124,9 +134,71 @@ export default function OrderBook() {
   const asks = orderBook.asks || [];
   const bids = orderBook.bids || [];
   
+  // Get best bid/ask prices
+  const bestAskPrice = asks.length > 0 ? parseFloat(asks[0].price) : null;
+  const bestBidPrice = bids.length > 0 ? parseFloat(bids[0].price) : null;
+  
   // Limit to top 10 levels for display
   const displayAsks = asks.slice(0, 10);
   const displayBids = bids.slice(0, 10);
+
+  // Get current position for this market/side
+  const currentPosition = positions.find(
+    (p) => p.marketId === marketData?.marketId && p.side === activeTab && p.assetId === selectedAssetId
+  );
+
+  // Handle buy
+  const handleBuy = () => {
+    if (!marketData?.marketId || !marketData?.marketTitle || !selectedAssetId) {
+      setTradeMessage({ type: "error", text: "Market data not loaded" });
+      return;
+    }
+
+    const qty = parseFloat(quantity);
+    if (isNaN(qty) || qty <= 0) {
+      setTradeMessage({ type: "error", text: "Invalid quantity" });
+      return;
+    }
+
+    const result = buy(
+      marketData.marketId,
+      marketData.marketTitle,
+      activeTab,
+      selectedAssetId,
+      bestAskPrice,
+      qty,
+      marketData.endTime
+    );
+
+    setTradeMessage({ type: result.success ? "success" : "error", text: result.message });
+    setTimeout(() => setTradeMessage(null), 3000);
+  };
+
+  // Handle sell
+  const handleSell = () => {
+    if (!marketData?.marketId || !marketData?.marketTitle || !selectedAssetId) {
+      setTradeMessage({ type: "error", text: "Market data not loaded" });
+      return;
+    }
+
+    const qty = parseFloat(quantity);
+    if (isNaN(qty) || qty <= 0) {
+      setTradeMessage({ type: "error", text: "Invalid quantity" });
+      return;
+    }
+
+    const result = sell(
+      marketData.marketId,
+      marketData.marketTitle,
+      activeTab,
+      selectedAssetId,
+      bestBidPrice,
+      qty
+    );
+
+    setTradeMessage({ type: result.success ? "success" : "error", text: result.message });
+    setTimeout(() => setTradeMessage(null), 3000);
+  };
 
   return (
     <div className="mb-6 rounded-lg border border-zinc-800 bg-zinc-900 p-3 sm:p-4">
@@ -189,6 +261,58 @@ export default function OrderBook() {
         >
           Trade Down
         </button>
+      </div>
+
+      {/* Trading Controls */}
+      <div className="mb-4 rounded-lg border border-zinc-800 bg-zinc-800/50 p-3">
+        <div className="mb-3 flex items-center justify-between">
+          <span className="text-sm font-medium text-white">Quantity</span>
+          {currentPosition && (
+            <span className="text-xs text-zinc-400">
+              Position: {currentPosition.quantity.toFixed(2)} shares @ {formatPrice(currentPosition.entryPrice.toString())}
+            </span>
+          )}
+        </div>
+        <div className="mb-3 flex gap-2">
+          <input
+            type="number"
+            value={quantity}
+            onChange={(e) => setQuantity(e.target.value)}
+            min="0.01"
+            step="0.01"
+            className="flex-1 rounded-lg border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm text-white focus:border-zinc-600 focus:outline-none"
+            placeholder="1.00"
+          />
+          <button
+            onClick={() => setQuantity(currentPosition ? currentPosition.quantity.toString() : "1")}
+            className="rounded-lg border border-zinc-700 bg-zinc-800 px-3 py-2 text-xs font-medium text-zinc-300 hover:bg-zinc-700"
+          >
+            {currentPosition ? "Max" : "1"}
+          </button>
+        </div>
+        <div className="flex gap-2">
+          <button
+            onClick={handleBuy}
+            disabled={!bestAskPrice || !isConnected}
+            className="flex-1 rounded-lg bg-green-600 px-4 py-2 text-sm font-semibold text-white hover:bg-green-700 disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            Buy {bestAskPrice ? formatPrice(bestAskPrice.toString()) : "—"}
+          </button>
+          <button
+            onClick={handleSell}
+            disabled={!bestBidPrice || !isConnected || !currentPosition}
+            className="flex-1 rounded-lg bg-red-600 px-4 py-2 text-sm font-semibold text-white hover:bg-red-700 disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            Sell {bestBidPrice ? formatPrice(bestBidPrice.toString()) : "—"}
+          </button>
+        </div>
+        {tradeMessage && (
+          <div className={`mt-2 rounded px-2 py-1 text-xs ${
+            tradeMessage.type === "success" ? "bg-green-500/20 text-green-400" : "bg-red-500/20 text-red-400"
+          }`}>
+            {tradeMessage.text}
+          </div>
+        )}
       </div>
 
       <div className="flex flex-col gap-4 md:flex-row">
