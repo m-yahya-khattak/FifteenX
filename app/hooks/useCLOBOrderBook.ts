@@ -77,6 +77,7 @@ export function useCLOBOrderBook(assetIds: string[] | null) {
   const [connectionStatus, setConnectionStatus] = useState<
     "disconnected" | "connecting" | "connected" | "error"
   >("disconnected");
+  const [rawMessages, setRawMessages] = useState<any[]>([]);
   const wsRef = useRef<WebSocket | null>(null);
   const reconnectTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const reconnectAttempts = useRef(0);
@@ -192,6 +193,12 @@ export function useCLOBOrderBook(assetIds: string[] | null) {
           }
 
           const data = JSON.parse(trimmedData) as OrderBookMessage;
+
+          // Store raw message for debugging (keep last 50 messages)
+          setRawMessages((prev) => {
+            const newMessages = [...prev, { ...data, receivedAt: new Date().toISOString() }];
+            return newMessages.slice(-50); // Keep last 50 messages
+          });
 
           // Handle book message (initial snapshot)
           if (data.event_type === "book") {
@@ -363,6 +370,7 @@ export function useCLOBOrderBook(assetIds: string[] | null) {
     orderBook,
     isConnected,
     connectionStatus,
+    rawMessages,
     connect,
     disconnect,
   };

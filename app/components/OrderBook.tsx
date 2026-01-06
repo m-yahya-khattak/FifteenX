@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { useCLOBOrderBook } from "../hooks/useCLOBOrderBook";
 import { useVirtualTrading } from "../hooks/useVirtualTrading";
 
@@ -21,9 +21,11 @@ export default function OrderBook() {
   const [marketData, setMarketData] = useState<MarketDataWithTime | null>(null);
   const [quantity, setQuantity] = useState<string>("1");
   const [tradeMessage, setTradeMessage] = useState<{ type: "success" | "error"; text: string } | null>(null);
+  const [upOrderBook, setUpOrderBook] = useState<any>(null);
+  const [downOrderBook, setDownOrderBook] = useState<any>(null);
   
   // Virtual trading hook
-  const { buy, sell, positions } = useVirtualTrading();
+  const { buy, sell, positions, balance } = useVirtualTrading();
 
   // Fetch market data to get asset IDs
   const fetchMarketData = async () => {
@@ -31,7 +33,6 @@ export default function OrderBook() {
       const response = await fetch("/api/markets?query=btc&limit=5");
       const data = await response.json();
       if (data.success && data.market) {
-        // Get asset IDs from market data (already extracted in API)
         const assetIds = data.market.assetIds || [];
 
         setMarketData({
@@ -61,54 +62,73 @@ export default function OrderBook() {
       const end = new Date(marketData.endTime!);
       const now = new Date();
       
-      // If market has ended, fetch next market
       if (end.getTime() <= now.getTime()) {
         fetchMarketData();
       }
-    }, 1000); // Check every second
+    }, 1000);
 
     return () => clearInterval(interval);
   }, [marketData?.endTime]);
 
-  // Backup: Check for new market every 2 minutes
+  // Get asset IDs for Up and Down
+  const upAssetId = marketData?.assetIds?.[0] || null;
+  const downAssetId = marketData?.assetIds?.[1] || null;
+
+  // Subscribe to both orderbooks
+  const upOrderBookData = useCLOBOrderBook(upAssetId ? [upAssetId] : null);
+  const downOrderBookData = useCLOBOrderBook(downAssetId ? [downAssetId] : null);
+
+  // Store orderbook data
   useEffect(() => {
-    const refreshInterval = setInterval(() => {
-      if (marketData?.endTime) {
-        const end = new Date(marketData.endTime);
-        const now = new Date();
-        // If market ended or will end soon, refresh
-        if (end.getTime() <= now.getTime() + 60000) { // 1 minute before or after
-          fetchMarketData();
-        }
-      }
-    }, 120000); // Every 2 minutes
+    if (upOrderBookData.orderBook) {
+      setUpOrderBook(upOrderBookData.orderBook);
+    }
+  }, [upOrderBookData.orderBook]);
 
-    return () => clearInterval(refreshInterval);
-  }, [marketData?.endTime]);
+  useEffect(() => {
+    if (downOrderBookData.orderBook) {
+      setDownOrderBook(downOrderBookData.orderBook);
+    }
+  }, [downOrderBookData.orderBook]);
 
-  // Get asset ID based on active tab
-  // For "up" tab, use first asset ID (Yes/Up token)
-  // For "down" tab, use second asset ID (No/Down token)
-  const selectedAssetId = marketData?.assetIds && marketData.assetIds.length >= 2
-    ? (activeTab === "up" ? marketData.assetIds[0] : marketData.assetIds[1])
+  // Get current orderbook based on active tab
+  const currentOrderBook = activeTab === "up" ? upOrderBook : downOrderBook;
+  const isConnected = activeTab === "up" ? upOrderBookData.isConnected : downOrderBookData.isConnected;
+
+  // Use best_ask and best_bid directly from WebSocket (more reliable)
+  const bestAskPrice = currentOrderBook?.bestAsk ? parseFloat(currentOrderBook.bestAsk) : null;
+  const bestBidPrice = currentOrderBook?.bestBid ? parseFloat(currentOrderBook.bestBid) : null;
+
+  // Calculate midpoint probability
+  const midpoint = bestBidPrice && bestAskPrice 
+    ? ((bestBidPrice + bestAskPrice) / 2).toFixed(4)
     : null;
 
-  // Create a stable key that changes when tab or asset IDs change
-  // This ensures the hook reconnects when switching tabs
-  const assetIdsKey = selectedAssetId 
-    ? `${activeTab}-${selectedAssetId}` 
-    : null;
+  // Get asks and bids from orderbook
+  const asks = currentOrderBook?.asks || [];
+  const bids = currentOrderBook?.bids || [];
+  
+  // Limit to top 8 levels for display
+  const displayAsks = asks.slice(0, 8);
+  const displayBids = bids.slice(0, 8);
 
-  // Get live orderbook data - pass array with selected asset ID
-  // The hook will reconnect when assetIds change (including tab switches)
-  const { orderBook, isConnected, connectionStatus } = useCLOBOrderBook(
-    selectedAssetId ? [selectedAssetId] : null
+  // Calculate max depth for visualization
+  const maxDepth = useMemo(() => {
+    const askDepths = asks.map(a => parseFloat(a.size) * parseFloat(a.price));
+    const bidDepths = bids.map(b => parseFloat(b.size) * parseFloat(b.price));
+    return Math.max(...askDepths, ...bidDepths, 1);
+  }, [asks, bids]);
+
+  // Get current position for this market/side
+  const selectedAssetId = activeTab === "up" ? upAssetId : downAssetId;
+  const currentPosition = positions.find(
+    (p) => p.marketId === marketData?.marketId && p.side === activeTab && p.assetId === selectedAssetId
   );
 
   // Format price for display (convert to cents)
-  const formatPrice = (price: string | null): string => {
-    if (!price) return "—";
-    const priceNum = parseFloat(price);
+  const formatPrice = (price: number | string | null): string => {
+    if (price === null) return "—";
+    const priceNum = typeof price === "string" ? parseFloat(price) : price;
     if (isNaN(priceNum)) return "—";
     const cents = (priceNum * 100).toFixed(0);
     return `${cents}¢`;
@@ -130,22 +150,28 @@ export default function OrderBook() {
     return `$${total.toFixed(2)}`;
   };
 
-  // Get asks and bids from orderbook
-  const asks = orderBook.asks || [];
-  const bids = orderBook.bids || [];
-  
-  // Get best bid/ask prices
-  const bestAskPrice = asks.length > 0 ? parseFloat(asks[0].price) : null;
-  const bestBidPrice = bids.length > 0 ? parseFloat(bids[0].price) : null;
-  
-  // Limit to top 10 levels for display
-  const displayAsks = asks.slice(0, 10);
-  const displayBids = bids.slice(0, 10);
-
-  // Get current position for this market/side
-  const currentPosition = positions.find(
-    (p) => p.marketId === marketData?.marketId && p.side === activeTab && p.assetId === selectedAssetId
-  );
+  // Quick amount buttons
+  const quickAmounts = [1, 20, 100];
+  const handleQuickAmount = (amount: number) => {
+    if (currentPosition && amount === -1) {
+      // Max button - use position quantity
+      setQuantity(currentPosition.quantity.toString());
+    } else if (amount === -1) {
+      // Max button - calculate max based on balance and price
+      if (bestAskPrice && balance > 0) {
+        const maxShares = Math.floor((balance / bestAskPrice) * 100) / 100;
+        setQuantity(maxShares.toFixed(2));
+      }
+    } else {
+      // Fixed amount buttons
+      if (bestAskPrice) {
+        const shares = Math.floor((amount / bestAskPrice) * 100) / 100;
+        setQuantity(shares.toFixed(2));
+      } else {
+        setQuantity(amount.toString());
+      }
+    }
+  };
 
   // Handle buy
   const handleBuy = () => {
@@ -157,6 +183,11 @@ export default function OrderBook() {
     const qty = parseFloat(quantity);
     if (isNaN(qty) || qty <= 0) {
       setTradeMessage({ type: "error", text: "Invalid quantity" });
+      return;
+    }
+
+    if (!bestAskPrice) {
+      setTradeMessage({ type: "error", text: "No ask price available" });
       return;
     }
 
@@ -172,6 +203,10 @@ export default function OrderBook() {
 
     setTradeMessage({ type: result.success ? "success" : "error", text: result.message });
     setTimeout(() => setTradeMessage(null), 3000);
+    
+    if (result.success) {
+      setQuantity("1"); // Reset quantity after successful trade
+    }
   };
 
   // Handle sell
@@ -187,6 +222,16 @@ export default function OrderBook() {
       return;
     }
 
+    if (!bestBidPrice) {
+      setTradeMessage({ type: "error", text: "No bid price available" });
+      return;
+    }
+
+    if (!currentPosition || currentPosition.quantity < qty) {
+      setTradeMessage({ type: "error", text: "Insufficient position" });
+      return;
+    }
+
     const result = sell(
       marketData.marketId,
       marketData.marketTitle,
@@ -198,207 +243,246 @@ export default function OrderBook() {
 
     setTradeMessage({ type: result.success ? "success" : "error", text: result.message });
     setTimeout(() => setTradeMessage(null), 3000);
+    
+    if (result.success) {
+      setQuantity("1"); // Reset quantity after successful trade
+    }
   };
 
+  // Calculate trade cost
+  const tradeCost = useMemo(() => {
+    if (!bestAskPrice) return null;
+    const qty = parseFloat(quantity) || 0;
+    return bestAskPrice * qty;
+  }, [bestAskPrice, quantity]);
+
   return (
-    <div className="mb-6 rounded-lg border border-zinc-800 bg-zinc-900 p-3 sm:p-4">
-      <div className="mb-4 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-        <div className="flex items-center gap-2">
-          <h3 className="text-base font-semibold text-white sm:text-lg">Order Book</h3>
-          <button className="text-zinc-400 hover:text-white">
-            <svg
-              className="h-4 w-4"
-              fill="none"
-              stroke="currentColor"
-              viewBox="0 0 24 24"
-            >
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth={2}
-                d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
-              />
-            </svg>
-          </button>
-        </div>
-        <div className="flex items-center gap-2">
-          <span className="text-sm text-zinc-400">$32.3k Vol.</span>
-          <svg
-            className="h-4 w-4 text-green-500"
-            fill="none"
-            stroke="currentColor"
-            viewBox="0 0 24 24"
-          >
-            <path
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              strokeWidth={2}
-              d="M5 15l7-7 7 7"
-            />
-          </svg>
-        </div>
-      </div>
-
-      {/* Tabs */}
-      <div className="mb-4 flex gap-2 border-b border-zinc-800">
-        <button
-          onClick={() => setActiveTab("up")}
-          className={`border-b-2 px-4 py-2 text-sm font-medium transition-colors ${
-            activeTab === "up"
-              ? "border-blue-500 text-white"
-              : "border-transparent text-zinc-400 hover:text-white"
-          }`}
-        >
-          Trade Up
-        </button>
-        <button
-          onClick={() => setActiveTab("down")}
-          className={`border-b-2 px-4 py-2 text-sm font-medium transition-colors ${
-            activeTab === "down"
-              ? "border-blue-500 text-white"
-              : "border-transparent text-zinc-400 hover:text-white"
-          }`}
-        >
-          Trade Down
-        </button>
-      </div>
-
-      {/* Trading Controls */}
-      <div className="mb-4 rounded-lg border border-zinc-800 bg-zinc-800/50 p-3">
+    <div className="mb-6 rounded-xl border border-zinc-800 bg-zinc-900/50 backdrop-blur-sm">
+      {/* Header */}
+      <div className="border-b border-zinc-800 p-4">
         <div className="mb-3 flex items-center justify-between">
-          <span className="text-sm font-medium text-white">Quantity</span>
-          {currentPosition && (
+          <h3 className="text-lg font-semibold text-white">Order Book</h3>
+          <div className="flex items-center gap-2">
+            <div className={`h-2 w-2 rounded-full ${isConnected ? "bg-green-500" : "bg-zinc-500"}`} />
             <span className="text-xs text-zinc-400">
-              Position: {currentPosition.quantity.toFixed(2)} shares @ {formatPrice(currentPosition.entryPrice.toString())}
+              {isConnected ? "Live" : "Connecting..."}
             </span>
-          )}
+          </div>
         </div>
-        <div className="mb-3 flex gap-2">
-          <input
-            type="number"
-            value={quantity}
-            onChange={(e) => setQuantity(e.target.value)}
-            min="0.01"
-            step="0.01"
-            className="flex-1 rounded-lg border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm text-white focus:border-zinc-600 focus:outline-none"
-            placeholder="1.00"
-          />
-          <button
-            onClick={() => setQuantity(currentPosition ? currentPosition.quantity.toString() : "1")}
-            className="rounded-lg border border-zinc-700 bg-zinc-800 px-3 py-2 text-xs font-medium text-zinc-300 hover:bg-zinc-700"
-          >
-            {currentPosition ? "Max" : "1"}
-          </button>
-        </div>
+
+        {/* Tabs */}
         <div className="flex gap-2">
           <button
-            onClick={handleBuy}
-            disabled={!bestAskPrice || !isConnected}
-            className="flex-1 rounded-lg bg-green-600 px-4 py-2 text-sm font-semibold text-white hover:bg-green-700 disabled:cursor-not-allowed disabled:opacity-50"
+            onClick={() => setActiveTab("up")}
+            className={`flex-1 rounded-lg px-4 py-2.5 text-sm font-semibold transition-all ${
+              activeTab === "up"
+                ? "bg-green-500/20 text-green-400 shadow-lg shadow-green-500/10"
+                : "bg-zinc-800/50 text-zinc-400 hover:bg-zinc-800 hover:text-white"
+            }`}
           >
-            Buy {bestAskPrice ? formatPrice(bestAskPrice.toString()) : "—"}
+            Up {upOrderBook?.bestAsk ? formatPrice(upOrderBook.bestAsk) : "—"}
           </button>
           <button
-            onClick={handleSell}
-            disabled={!bestBidPrice || !isConnected || !currentPosition}
-            className="flex-1 rounded-lg bg-red-600 px-4 py-2 text-sm font-semibold text-white hover:bg-red-700 disabled:cursor-not-allowed disabled:opacity-50"
+            onClick={() => setActiveTab("down")}
+            className={`flex-1 rounded-lg px-4 py-2.5 text-sm font-semibold transition-all ${
+              activeTab === "down"
+                ? "bg-red-500/20 text-red-400 shadow-lg shadow-red-500/10"
+                : "bg-zinc-800/50 text-zinc-400 hover:bg-zinc-800 hover:text-white"
+            }`}
           >
-            Sell {bestBidPrice ? formatPrice(bestBidPrice.toString()) : "—"}
+            Down {downOrderBook?.bestAsk ? formatPrice(downOrderBook.bestAsk) : "—"}
           </button>
         </div>
-        {tradeMessage && (
-          <div className={`mt-2 rounded px-2 py-1 text-xs ${
-            tradeMessage.type === "success" ? "bg-green-500/20 text-green-400" : "bg-red-500/20 text-red-400"
-          }`}>
-            {tradeMessage.text}
-          </div>
-        )}
       </div>
 
-      <div className="flex flex-col gap-4 md:flex-row">
-        {/* Asks (Red) */}
-        <div className="flex-1">
-          <div className="mb-2 flex items-center gap-2">
-            <div className="h-3 w-1 rounded bg-red-500"></div>
-            <span className="rounded bg-red-500/20 px-2 py-0.5 text-xs font-semibold text-red-400">
-              Asks
-            </span>
-          </div>
-          <div className="mb-2 grid grid-cols-3 gap-2 text-xs font-semibold text-zinc-400">
-            <div>PRICE</div>
-            <div className="text-center">SHARES</div>
-            <div className="text-right">TOTAL</div>
-          </div>
-          <div className="space-y-1">
-            {displayAsks.length > 0 ? (
-              displayAsks.map((ask, i) => (
-                <div
-                  key={`${ask.price}-${i}`}
-                  className="grid grid-cols-3 gap-2 rounded bg-red-500/10 px-2 py-1 text-xs sm:text-sm"
-                >
-                  <span className="font-medium text-red-400">{formatPrice(ask.price)}</span>
-                  <span className="text-center text-zinc-300">{formatShares(ask.size)}</span>
-                  <span className="text-right text-zinc-300">{calculateTotal(ask.price, ask.size)}</span>
-                </div>
-              ))
-            ) : (
-              <div className="py-4 text-center text-xs text-zinc-500">
-                {connectionStatus === "connecting" ? "Connecting..." : 
-                 connectionStatus === "error" ? "Connection error" : 
-                 "No asks available"}
+      <div className="grid gap-4 p-4 md:grid-cols-3">
+        {/* Orderbook */}
+        <div className="md:col-span-2">
+          <div className="flex gap-4">
+            {/* Asks (Sell Orders) */}
+            <div className="flex-1">
+              <div className="mb-2 flex items-center justify-between">
+                <span className="text-xs font-semibold text-red-400">Asks</span>
+                <span className="text-xs text-zinc-500">Price • Size</span>
               </div>
-            )}
+              <div className="space-y-0.5">
+                {displayAsks.length > 0 ? (
+                  displayAsks.map((ask, i) => {
+                    const depth = (parseFloat(ask.size) * parseFloat(ask.price)) / maxDepth;
+                    return (
+                      <div
+                        key={`ask-${i}`}
+                        className="group relative flex items-center justify-between rounded px-2 py-1 text-xs transition-colors hover:bg-red-500/10"
+                      >
+                        <div
+                          className="absolute left-0 top-0 h-full rounded bg-red-500/10 transition-all"
+                          style={{ width: `${depth * 100}%` }}
+                        />
+                        <span className="relative z-10 font-medium text-red-400">
+                          {formatPrice(ask.price)}
+                        </span>
+                        <span className="relative z-10 text-zinc-300">
+                          {formatShares(ask.size)}
+                        </span>
+                      </div>
+                    );
+                  })
+                ) : (
+                  <div className="py-8 text-center text-xs text-zinc-500">
+                    {isConnected ? "No asks available" : "Connecting..."}
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* Spread & Midpoint */}
+            <div className="flex flex-col items-center justify-center gap-2 border-x border-zinc-800 px-4">
+              {midpoint && (
+                <>
+                  <div className="text-center">
+                    <div className="text-xs text-zinc-500">Midpoint</div>
+                    <div className="text-sm font-semibold text-white">
+                      {formatPrice(parseFloat(midpoint))}
+                    </div>
+                  </div>
+                  {currentOrderBook?.spread && (
+                    <div className="text-center">
+                      <div className="text-xs text-zinc-500">Spread</div>
+                      <div className="text-xs font-medium text-yellow-400">
+                        {formatPrice(currentOrderBook.spread)}
+                      </div>
+                    </div>
+                  )}
+                </>
+              )}
+            </div>
+
+            {/* Bids (Buy Orders) */}
+            <div className="flex-1">
+              <div className="mb-2 flex items-center justify-between">
+                <span className="text-xs font-semibold text-green-400">Bids</span>
+                <span className="text-xs text-zinc-500">Price • Size</span>
+              </div>
+              <div className="space-y-0.5">
+                {displayBids.length > 0 ? (
+                  displayBids.map((bid, i) => {
+                    const depth = (parseFloat(bid.size) * parseFloat(bid.price)) / maxDepth;
+                    return (
+                      <div
+                        key={`bid-${i}`}
+                        className="group relative flex items-center justify-between rounded px-2 py-1 text-xs transition-colors hover:bg-green-500/10"
+                      >
+                        <div
+                          className="absolute right-0 top-0 h-full rounded bg-green-500/10 transition-all"
+                          style={{ width: `${depth * 100}%` }}
+                        />
+                        <span className="relative z-10 text-zinc-300">
+                          {formatShares(bid.size)}
+                        </span>
+                        <span className="relative z-10 font-medium text-green-400">
+                          {formatPrice(bid.price)}
+                        </span>
+                      </div>
+                    );
+                  })
+                ) : (
+                  <div className="py-8 text-center text-xs text-zinc-500">
+                    {isConnected ? "No bids available" : "Connecting..."}
+                  </div>
+                )}
+              </div>
+            </div>
           </div>
-          <div className="mt-2 text-center text-xs text-zinc-400 sm:text-sm">
-            {orderBook.lastTradePrice ? (
-              <>Last: {formatPrice(orderBook.lastTradePrice)}</>
-            ) : (
-              <>Last: —</>
-            )}
-            {isConnected && (
-              <span className="ml-2 text-[10px] text-green-400">●</span>
-            )}
-          </div>
+
+          {/* Last Trade */}
+          {currentOrderBook?.lastTradePrice && (
+            <div className="mt-4 text-center text-xs text-zinc-500">
+              Last: <span className="text-zinc-300">{formatPrice(currentOrderBook.lastTradePrice)}</span>
+            </div>
+          )}
         </div>
 
-        {/* Spread */}
-        <div className="flex items-center justify-center text-xs text-zinc-500 md:flex-col">
-          Spread: {orderBook.spread ? `${(parseFloat(orderBook.spread) * 100).toFixed(0)}¢` : "—"}
-        </div>
+        {/* Trading Panel */}
+        <div className="rounded-lg border border-zinc-800 bg-zinc-900/50 p-4">
+          <div className="mb-4">
+            <div className="mb-2 flex items-center justify-between">
+              <span className="text-xs font-medium text-zinc-400">Amount</span>
+              {tradeCost && (
+                <span className="text-xs text-zinc-500">
+                  ${tradeCost.toFixed(2)}
+                </span>
+              )}
+            </div>
+            <input
+              type="number"
+              value={quantity}
+              onChange={(e) => setQuantity(e.target.value)}
+              min="0.01"
+              step="0.01"
+              className="w-full rounded-lg border border-zinc-700 bg-zinc-900 px-3 py-2.5 text-sm font-medium text-white placeholder-zinc-500 transition-all focus:border-zinc-600 focus:outline-none focus:ring-2 focus:ring-blue-500/20"
+              placeholder="0.00"
+            />
+          </div>
 
-        {/* Bids (Green) */}
-        <div className="flex-1">
-          <div className="mb-2 flex items-center gap-2">
-            <div className="h-3 w-1 rounded bg-green-500"></div>
-            <span className="rounded bg-green-500/20 px-2 py-0.5 text-xs font-semibold text-green-400">
-              Bids
-            </span>
+          {/* Quick Amount Buttons */}
+          <div className="mb-4 grid grid-cols-4 gap-2">
+            {quickAmounts.map((amount) => (
+              <button
+                key={amount}
+                onClick={() => handleQuickAmount(amount)}
+                className="rounded-lg border border-zinc-700 bg-zinc-800/50 px-2 py-1.5 text-xs font-medium text-zinc-300 transition-all hover:bg-zinc-700 hover:text-white"
+              >
+                +${amount}
+              </button>
+            ))}
+            <button
+              onClick={() => handleQuickAmount(-1)}
+              className="rounded-lg border border-zinc-700 bg-zinc-800/50 px-2 py-1.5 text-xs font-medium text-zinc-300 transition-all hover:bg-zinc-700 hover:text-white"
+            >
+              Max
+            </button>
           </div>
-          <div className="mb-2 grid grid-cols-3 gap-2 text-xs font-semibold text-zinc-400">
-            <div>PRICE</div>
-            <div className="text-center">SHARES</div>
-            <div className="text-right">TOTAL</div>
-          </div>
-          <div className="space-y-1">
-            {displayBids.length > 0 ? (
-              displayBids.map((bid, i) => (
-                <div
-                  key={`${bid.price}-${i}`}
-                  className="grid grid-cols-3 gap-2 rounded bg-green-500/10 px-2 py-1 text-xs sm:text-sm"
-                >
-                  <span className="font-medium text-green-400">{formatPrice(bid.price)}</span>
-                  <span className="text-center text-zinc-300">{formatShares(bid.size)}</span>
-                  <span className="text-right text-zinc-300">{calculateTotal(bid.price, bid.size)}</span>
-                </div>
-              ))
-            ) : (
-              <div className="py-4 text-center text-xs text-zinc-500">
-                {connectionStatus === "connecting" ? "Connecting..." : 
-                 connectionStatus === "error" ? "Connection error" : 
-                 "No bids available"}
+
+          {/* Current Position */}
+          {currentPosition && (
+            <div className="mb-4 rounded-lg border border-blue-500/30 bg-blue-500/10 p-3">
+              <div className="mb-1 text-xs text-zinc-400">Position</div>
+              <div className="text-sm font-semibold text-white">
+                {currentPosition.quantity.toFixed(2)} @ {formatPrice(currentPosition.entryPrice)}
               </div>
-            )}
+            </div>
+          )}
+
+          {/* Buy/Sell Buttons */}
+          <div className="space-y-2">
+            <button
+              onClick={handleBuy}
+              disabled={!bestAskPrice || !isConnected || !quantity || parseFloat(quantity) <= 0}
+              className="w-full rounded-lg bg-green-600 px-4 py-3 text-sm font-bold text-white shadow-lg shadow-green-600/20 transition-all hover:bg-green-700 disabled:cursor-not-allowed disabled:opacity-50 disabled:shadow-none"
+            >
+              Buy {bestAskPrice ? formatPrice(bestAskPrice) : "—"}
+            </button>
+            <button
+              onClick={handleSell}
+              disabled={!bestBidPrice || !isConnected || !currentPosition || !quantity || parseFloat(quantity) <= 0}
+              className="w-full rounded-lg bg-red-600 px-4 py-3 text-sm font-bold text-white shadow-lg shadow-red-600/20 transition-all hover:bg-red-700 disabled:cursor-not-allowed disabled:opacity-50 disabled:shadow-none"
+            >
+              Sell {bestBidPrice ? formatPrice(bestBidPrice) : "—"}
+            </button>
           </div>
+
+          {/* Trade Message */}
+          {tradeMessage && (
+            <div
+              className={`mt-3 rounded-lg px-3 py-2 text-xs font-medium transition-all ${
+                tradeMessage.type === "success"
+                  ? "bg-green-500/20 text-green-400"
+                  : "bg-red-500/20 text-red-400"
+              }`}
+            >
+              {tradeMessage.text}
+            </div>
+          )}
         </div>
       </div>
     </div>

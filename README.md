@@ -148,16 +148,19 @@ npm run dev
 
 ## 📌 Roadmap
 
+**Project Start Date:** January 1, 2026  
+**Target Completion:** February 1, 2026
+
 ### Current Phase: MVP Development (Phase 2)
 
 | Phase | Status | Timeline | Description |
 |------|--------|----------|-------------|
-| **Phase 1** | ✅ **Complete** | Q4 2024 | Polymarket integration + Market Viewer UI |
-| **Phase 2** | 🚀 **In Progress** | Q4 2024 - Q1 2025 | Virtual Trading System + Real-time Data |
-| **Phase 3** | ⏳ **Planned** | Q1 2025 | Market Resolution + Win/Lose Logic |
-| **Phase 4** | ⏳ **Planned** | Q1 2025 | Gamification + Leaderboards |
-| **Phase 5** | ⏳ **Planned** | Q2 2025 | Mobile App (React Native) |
-| **Phase 6** | ❓ **TBD** | Future | Real Trading (if compliant) |
+| **Phase 1** | ✅ **Complete** | Jan 1-5, 2026 | Polymarket integration + Market Viewer UI |
+| **Phase 2** | 🚀 **In Progress** | Jan 5-15, 2026 | Virtual Trading System + Real-time Data |
+| **Phase 3** | ⏳ **Planned** | Jan 15-20, 2026 | Market Resolution + Win/Lose Logic |
+| **Phase 4** | ⏳ **Planned** | Jan 20-25, 2026 | Gamification + Leaderboards |
+| **Phase 5** | ⏳ **Planned** | Jan 25-30, 2026 | Mobile App (React Native) |
+| **Phase 6** | ⏳ **Planned** | Jan 30 - Feb 1, 2026 | Real Trading (if compliant) |
 
 ### Detailed Roadmap
 
@@ -204,7 +207,7 @@ npm run dev
 - [ ] Push notifications
 - [ ] Mobile-specific features
 
-#### ❓ Phase 6: Real Trading (TBD - Future)
+#### ⏳ Phase 6: Real Trading (Jan 30 - Feb 1, 2026)
 - [ ] Legal & compliance review
 - [ ] Wallet integration
 - [ ] Real trading APIs
@@ -315,7 +318,7 @@ npm run dev
 *No high priority bugs currently tracked*
 
 ### 🟢 Medium Priority Bugs
-*No medium priority bugs currently tracked*
+- [ ] **Price to beat not consistently fetched** - Polymarket API (`/api/crypto/crypto-price`) fails frequently, causing inconsistent "price to beat" display. Currently has fallback mechanism but needs improvement for better reliability.
 
 ### 🔵 Low Priority / Enhancements
 *No low priority bugs currently tracked*
@@ -332,22 +335,26 @@ npm run dev
 - Price chart animation may feel slightly delayed on very fast price movements
 - Orderbook may take 1-2 seconds to update when switching tabs
 - Market data refresh may occasionally miss the exact market end time
+- **Price to beat API reliability** - Polymarket's `/api/crypto/crypto-price` endpoint frequently fails, causing "price to beat" to not display consistently. Fallback mechanism exists but needs improvement.
 
 ---
 
 ## 📊 Progress Tracker
 
-### Overall Progress: **~65% Complete**
+> **⚠️ CURRENT FOCUS:** Perfecting Orderbook & Virtual Buy/Sell Trades  
+> **Next Session:** Continue from TODO section below → Optimize orderbook price updates and enhance virtual trading execution logic
+
+### Overall Progress: **~70% Complete**
 
 #### Phase 1: Market Viewer ✅ **100%**
 - Market fetching: ✅ 100%
 - Market display: ✅ 100%
 - Reference price: ✅ 100%
 
-#### Phase 2: Virtual Trading System 🚀 **75%**
+#### Phase 2: Virtual Trading System 🚀 **80%**
 - Real-time price feed: ✅ 100%
-- Live orderbook: ✅ 100%
-- Virtual trading core: ✅ 100%
+- Live orderbook: 🚧 90% (Needs optimization - price stability, flickering)
+- Virtual trading core: 🚧 85% (Needs perfection - edge cases, validation)
 - Market resolution: ❌ 0%
 - Win/lose logic: ❌ 0%
 
@@ -367,7 +374,7 @@ npm run dev
 |-----------|--------|----------|
 | **PriceChart** | ✅ Complete | 100% |
 | **MarketHeader** | ✅ Complete | 100% |
-| **OrderBook** | ✅ Complete | 100% |
+| **OrderBook** | 🚧 Needs Work | 90% (Price stability, UX improvements needed) |
 | **Portfolio** | ✅ Complete | 100% |
 | **TradeHistory** | ✅ Complete | 100% |
 | **TradingPanel** | ✅ Complete | 100% |
@@ -381,7 +388,7 @@ npm run dev
 |------|--------|----------|
 | **useRTDS** | ✅ Complete | 100% |
 | **useCLOBOrderBook** | ✅ Complete | 100% |
-| **useVirtualTrading** | 🚧 Partial | 80% |
+| **useVirtualTrading** | 🚧 Partial | 85% (Needs edge case handling, validation) |
 | **useBinancePrice** | ✅ Complete | 100% |
 
 ### API Status
@@ -389,6 +396,45 @@ npm run dev
 | API Route | Status | Progress |
 |-----------|--------|----------|
 | **/api/markets** | ✅ Complete | 100% |
+
+### 🎯 Current TODO (Continue From Here)
+
+**Status:** In Progress  
+**Last Updated:** January 2026
+
+#### Priority Tasks
+
+1. **Perfect Orderbook & Virtual Buy/Sell Trades** (Priority: High) ⚠️ **START HERE TOMORROW**
+   - [ ] Optimize orderbook price updates (reduce flickering)
+   - [ ] Improve price stability using midpoint or throttling
+   - [ ] Enhance virtual trading execution logic
+   - [ ] Add order confirmation/confirmation dialog
+   - [ ] Improve trade feedback and animations
+   - [ ] Test edge cases (rapid price changes, insufficient balance, etc.)
+   - [ ] Verify best_ask/best_bid usage from WebSocket
+   - [ ] Add price validation before trade execution
+   - [ ] Improve error handling for failed trades
+
+2. **Market Resolution Logic** (Priority: High)
+   - Detect when market ends
+   - Compare final price vs reference price
+   - Auto-settle positions
+   - Calculate final P&L
+
+3. **Win/Lose Feedback** (Priority: High)
+   - Visual animations for wins/losses
+   - Notification system
+   - Summary screen
+
+4. **Statistics Dashboard** (Priority: Medium)
+   - Win rate calculation
+   - Total P&L tracking
+   - Trade statistics
+
+5. **Leaderboard** (Priority: Medium)
+   - Global leaderboard
+   - Weekly competitions
+   - User rankings
 
 ### Next Milestones
 
