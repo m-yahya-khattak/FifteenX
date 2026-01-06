@@ -148,17 +148,274 @@ npm run dev
 
 ## 📌 Roadmap
 
-| Phase | Status | Description |
-|------|--------|-------------|
-| Phase 1 | 🚀 In Progress | Polymarket integration + UI |
-| Phase 2 | ⏳ Planned | Paper trading + DB |
-| Phase 3 | ⏳ Planned | Leaderboards + identity |
-| Phase 4 | ⏳ Planned | Mobile + gamification |
-| Phase 5 | ❓ TBD | Possible compliant real trading |
+### Current Phase: MVP Development (Phase 2)
 
-Build → iterate → refine → scale.
+| Phase | Status | Timeline | Description |
+|------|--------|----------|-------------|
+| **Phase 1** | ✅ **Complete** | Q4 2024 | Polymarket integration + Market Viewer UI |
+| **Phase 2** | 🚀 **In Progress** | Q4 2024 - Q1 2025 | Virtual Trading System + Real-time Data |
+| **Phase 3** | ⏳ **Planned** | Q1 2025 | Market Resolution + Win/Lose Logic |
+| **Phase 4** | ⏳ **Planned** | Q1 2025 | Gamification + Leaderboards |
+| **Phase 5** | ⏳ **Planned** | Q2 2025 | Mobile App (React Native) |
+| **Phase 6** | ❓ **TBD** | Future | Real Trading (if compliant) |
+
+### Detailed Roadmap
+
+#### ✅ Phase 1: Market Viewer (Complete)
+- [x] Polymarket API integration
+- [x] Market data fetching
+- [x] 15-minute market filtering
+- [x] Market header with countdown
+- [x] Reference price display
+
+#### 🚀 Phase 2: Virtual Trading System (In Progress)
+- [x] Real-time price chart with animation
+- [x] RTDS WebSocket integration (Chainlink)
+- [x] Binance price integration
+- [x] Price source switcher (Chainlink/Binance)
+- [x] Live orderbook via CLOB WebSocket
+- [x] Virtual trading system (buy/sell)
+- [x] Portfolio display
+- [x] Trade history
+- [x] Auto-refresh on market end
+- [ ] Market resolution logic
+- [ ] Automatic position settlement
+- [ ] Win/lose feedback & animations
+
+#### ⏳ Phase 3: Market Resolution (Planned)
+- [ ] Market end detection
+- [ ] Final price vs "price to beat" comparison
+- [ ] Automatic position settlement
+- [ ] P&L calculation on market close
+- [ ] Win/lose determination
+- [ ] Settlement notifications
+
+#### ⏳ Phase 4: Gamification (Planned)
+- [ ] Win/lose animations & feedback
+- [ ] Global leaderboard
+- [ ] Win streak tracking
+- [ ] Badges & achievements
+- [ ] Statistics dashboard (win rate, total P&L)
+- [ ] Weekly competitions
+
+#### ⏳ Phase 5: Mobile App (Planned)
+- [ ] React Native setup
+- [ ] Mobile-optimized UI
+- [ ] Push notifications
+- [ ] Mobile-specific features
+
+#### ❓ Phase 6: Real Trading (TBD - Future)
+- [ ] Legal & compliance review
+- [ ] Wallet integration
+- [ ] Real trading APIs
+- [ ] KYC/AML if required
 
 ---
+
+## ✅ Feature Checklist
+
+### Core Features
+
+#### Market Data & Display
+- [x] **Market fetching** - Fetch active 15-minute BTC markets from Polymarket
+- [x] **Market header** - Display market title, time range, countdown
+- [x] **Reference price** - Show "price to beat" with fallback mechanism
+- [x] **Auto-refresh** - Automatically fetch new market when current one ends
+- [x] **Price source switcher** - Toggle between Chainlink and Binance prices
+
+#### Real-time Price Feed
+- [x] **RTDS WebSocket** - Connect to Polymarket RTDS for real-time prices
+- [x] **Chainlink prices** - Subscribe to `crypto_prices_chainlink` topic
+- [x] **Binance prices** - Subscribe to `crypto_prices` topic (via RTDS)
+- [x] **Price chart** - Real-time animated price chart
+- [x] **Smooth animation** - Continuous price interpolation animation
+- [x] **Historical prices** - Fetch and display price history
+
+#### Live Orderbook
+- [x] **CLOB WebSocket** - Connect to Polymarket CLOB WebSocket
+- [x] **Live bids/asks** - Display real-time orderbook data
+- [x] **Spread calculation** - Show bid-ask spread
+- [x] **Last trade price** - Display last executed trade
+- [x] **Tab switching** - Separate orderbooks for "Trade Up" and "Trade Down"
+- [x] **Auto-reconnect** - Handle WebSocket reconnections
+
+#### Virtual Trading
+- [x] **Virtual balance** - Starting balance ($10,000) stored in localStorage
+- [x] **Buy orders** - Execute buy orders at best ask price
+- [x] **Sell orders** - Execute sell orders at best bid price
+- [x] **Position tracking** - Track open positions per market/side
+- [x] **Trade history** - Log all completed trades
+- [x] **Portfolio display** - Show balance, positions, and P&L
+- [x] **P&L calculation** - Calculate unrealized P&L for open positions
+- [ ] **Market resolution** - Auto-settle positions when market ends
+- [ ] **Win/lose logic** - Determine win/loss based on market outcome
+
+#### UI/UX
+- [x] **Responsive design** - Works on desktop
+- [x] **Loading states** - Show loading indicators
+- [x] **Error handling** - Display error messages
+- [x] **Trade feedback** - Success/error messages for trades
+- [ ] **Win/lose animations** - Celebration animations for wins
+- [ ] **Sound effects** - Optional audio feedback
+- [ ] **Dark mode** - Theme switcher
+
+### Gamification Features
+
+#### Statistics & Tracking
+- [ ] **Win rate** - Calculate and display win percentage
+- [ ] **Total wins/losses** - Track overall performance
+- [ ] **Best trade** - Show highest profit trade
+- [ ] **Worst trade** - Show largest loss trade
+- [ ] **Average P&L** - Calculate average profit/loss per trade
+- [ ] **Trading volume** - Track total trading volume
+
+#### Achievements & Badges
+- [ ] **First win badge** - Award on first successful trade
+- [ ] **Win streak badge** - Award for consecutive wins
+- [ ] **High roller badge** - Award for large trades
+- [ ] **Perfect week badge** - Award for 100% win rate in a week
+- [ ] **Badge system** - Display earned badges
+
+#### Leaderboards
+- [ ] **Global leaderboard** - Top traders by P&L
+- [ ] **Weekly leaderboard** - Weekly top performers
+- [ ] **Win streak leaderboard** - Longest win streaks
+- [ ] **Leaderboard API** - Backend for leaderboard data
+
+### Technical Features
+
+#### Performance
+- [x] **WebSocket optimization** - Efficient WebSocket connections
+- [x] **Throttling** - Throttle price updates for performance
+- [x] **Animation optimization** - Smooth 60fps animations
+- [ ] **Code splitting** - Lazy load components
+- [ ] **Caching** - Cache market data
+
+#### Error Handling
+- [x] **WebSocket reconnection** - Auto-reconnect on disconnect
+- [x] **API fallbacks** - Fallback mechanisms for API failures
+- [x] **Error boundaries** - React error boundaries
+- [ ] **Retry logic** - Exponential backoff for failed requests
+- [ ] **Error logging** - Track errors for debugging
+
+#### Data Persistence
+- [x] **localStorage** - Store trading data in browser
+- [ ] **Database integration** - Optional backend database
+- [ ] **Data export** - Export trade history
+- [ ] **Data import** - Import previous trading data
+
+---
+
+## 🐛 Bug Tracker
+
+### 🔴 Critical Bugs
+*No critical bugs currently tracked*
+
+### 🟡 High Priority Bugs
+*No high priority bugs currently tracked*
+
+### 🟢 Medium Priority Bugs
+*No medium priority bugs currently tracked*
+
+### 🔵 Low Priority / Enhancements
+*No low priority bugs currently tracked*
+
+### ✅ Resolved Bugs
+- [x] **Binance WebSocket CORS error** - Resolved by using RTDS proxy
+- [x] **Orderbook infinite re-render loop** - Fixed with `useCallback` and proper dependencies
+- [x] **Orderbook not updating on tab switch** - Fixed by clearing state on asset ID change
+- [x] **Orderbook not updating on new market** - Fixed with auto-refresh logic
+- [x] **Price chart animation stuttering** - Improved with continuous animation loop
+- [x] **Reference price fetch failures** - Added hybrid retry mechanism with fallback
+
+### 📝 Known Issues
+- Price chart animation may feel slightly delayed on very fast price movements
+- Orderbook may take 1-2 seconds to update when switching tabs
+- Market data refresh may occasionally miss the exact market end time
+
+---
+
+## 📊 Progress Tracker
+
+### Overall Progress: **~65% Complete**
+
+#### Phase 1: Market Viewer ✅ **100%**
+- Market fetching: ✅ 100%
+- Market display: ✅ 100%
+- Reference price: ✅ 100%
+
+#### Phase 2: Virtual Trading System 🚀 **75%**
+- Real-time price feed: ✅ 100%
+- Live orderbook: ✅ 100%
+- Virtual trading core: ✅ 100%
+- Market resolution: ❌ 0%
+- Win/lose logic: ❌ 0%
+
+#### Phase 3: Market Resolution ⏳ **0%**
+- Market end detection: ❌ 0%
+- Position settlement: ❌ 0%
+- Win/lose determination: ❌ 0%
+
+#### Phase 4: Gamification ⏳ **0%**
+- Leaderboards: ❌ 0%
+- Achievements: ❌ 0%
+- Statistics: ❌ 0%
+
+### Component Status
+
+| Component | Status | Progress |
+|-----------|--------|----------|
+| **PriceChart** | ✅ Complete | 100% |
+| **MarketHeader** | ✅ Complete | 100% |
+| **OrderBook** | ✅ Complete | 100% |
+| **Portfolio** | ✅ Complete | 100% |
+| **TradeHistory** | ✅ Complete | 100% |
+| **TradingPanel** | ✅ Complete | 100% |
+| **Market Resolution** | ❌ Not Started | 0% |
+| **Win/Lose Feedback** | ❌ Not Started | 0% |
+| **Leaderboard** | ❌ Not Started | 0% |
+
+### Hook Status
+
+| Hook | Status | Progress |
+|------|--------|----------|
+| **useRTDS** | ✅ Complete | 100% |
+| **useCLOBOrderBook** | ✅ Complete | 100% |
+| **useVirtualTrading** | 🚧 Partial | 80% |
+| **useBinancePrice** | ✅ Complete | 100% |
+
+### API Status
+
+| API Route | Status | Progress |
+|-----------|--------|----------|
+| **/api/markets** | ✅ Complete | 100% |
+
+### Next Milestones
+
+1. **Market Resolution Logic** (Priority: High)
+   - Detect when market ends
+   - Compare final price vs reference price
+   - Auto-settle positions
+   - Calculate final P&L
+
+2. **Win/Lose Feedback** (Priority: High)
+   - Visual animations for wins/losses
+   - Notification system
+   - Summary screen
+
+3. **Statistics Dashboard** (Priority: Medium)
+   - Win rate calculation
+   - Total P&L tracking
+   - Trade statistics
+
+4. **Leaderboard** (Priority: Medium)
+   - Global leaderboard
+   - Weekly competitions
+   - User rankings
+
+---
+
+Build → iterate → refine → scale.
 
 ## 🤝 Contributions Welcome
 
