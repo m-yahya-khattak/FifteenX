@@ -3,6 +3,7 @@
 import { useState, useEffect, useMemo } from "react";
 import { useCLOBOrderBook } from "../hooks/useCLOBOrderBook";
 import { useVirtualTrading } from "../hooks/useVirtualTrading";
+import { isMainAppPaused } from "../lib/appConfig";
 
 interface MarketData {
   assetIds?: string[];
@@ -29,6 +30,11 @@ export default function OrderBook() {
 
   // Fetch market data to get asset IDs
   const fetchMarketData = async () => {
+    // Don't fetch if main app is paused
+    if (isMainAppPaused()) {
+      return;
+    }
+    
     try {
       const response = await fetch("/api/markets?query=btc&limit=5");
       const data = await response.json();
@@ -315,7 +321,7 @@ export default function OrderBook() {
                         className="group relative flex items-center justify-between rounded px-2 py-1 text-xs transition-colors hover:bg-red-500/10"
                       >
                         <div
-                          className="absolute left-0 top-0 h-full rounded bg-red-500/10 transition-all"
+                          className="absolute left-0 top-0 h-full rounded bg-red-500/10 transition-all duration-500 ease-out"
                           style={{ width: `${depth * 100}%` }}
                         />
                         <span className="relative z-10 font-medium text-red-400">
@@ -373,7 +379,7 @@ export default function OrderBook() {
                         className="group relative flex items-center justify-between rounded px-2 py-1 text-xs transition-colors hover:bg-green-500/10"
                       >
                         <div
-                          className="absolute right-0 top-0 h-full rounded bg-green-500/10 transition-all"
+                          className="absolute right-0 top-0 h-full rounded bg-green-500/10 transition-all duration-500 ease-out"
                           style={{ width: `${depth * 100}%` }}
                         />
                         <span className="relative z-10 text-zinc-300">
@@ -458,16 +464,20 @@ export default function OrderBook() {
             <button
               onClick={handleBuy}
               disabled={!bestAskPrice || !isConnected || !quantity || parseFloat(quantity) <= 0}
-              className="w-full rounded-lg bg-green-600 px-4 py-3 text-sm font-bold text-white shadow-lg shadow-green-600/20 transition-all hover:bg-green-700 disabled:cursor-not-allowed disabled:opacity-50 disabled:shadow-none"
+              className="w-full rounded-lg bg-green-600 px-4 py-3 text-sm font-bold text-white shadow-lg shadow-green-600/20 transition-all duration-300 hover:bg-green-700 disabled:cursor-not-allowed disabled:opacity-50 disabled:shadow-none"
             >
-              Buy {bestAskPrice ? formatPrice(bestAskPrice) : "—"}
+              <span className="inline-block transition-all duration-500 ease-out">
+                Buy {bestAskPrice ? formatPrice(bestAskPrice) : "—"}
+              </span>
             </button>
             <button
               onClick={handleSell}
               disabled={!bestBidPrice || !isConnected || !currentPosition || !quantity || parseFloat(quantity) <= 0}
-              className="w-full rounded-lg bg-red-600 px-4 py-3 text-sm font-bold text-white shadow-lg shadow-red-600/20 transition-all hover:bg-red-700 disabled:cursor-not-allowed disabled:opacity-50 disabled:shadow-none"
+              className="w-full rounded-lg bg-red-600 px-4 py-3 text-sm font-bold text-white shadow-lg shadow-red-600/20 transition-all duration-300 hover:bg-red-700 disabled:cursor-not-allowed disabled:opacity-50 disabled:shadow-none"
             >
-              Sell {bestBidPrice ? formatPrice(bestBidPrice) : "—"}
+              <span className="inline-block transition-all duration-500 ease-out">
+                Sell {bestBidPrice ? formatPrice(bestBidPrice) : "—"}
+              </span>
             </button>
           </div>
 

@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { findActiveMarket, extractTimestampFromSlug, fetchHistoricalBTCPrice, fetchPolymarketCryptoPrice } from "../../lib/marketUtils";
+import { findActiveMarket, extractTimestampFromSlug, fetchHistoricalBTCPrice } from "../../lib/marketUtils";
 
 /**
  * Deep search for reference price in nested API response
@@ -147,19 +147,12 @@ export async function GET(request: Request) {
     const startTime = calculatedStartTime || data.startDate || data.start_time || data.createdAt;
     const endTime = calculatedEndTime || data.endDate || data.end_time;
     
-    // Priority 1: Try Polymarket crypto-price API (official endpoint for price to beat)
+    // Reference price - removed Polymarket API call (no external APIs)
+    // Websocket data provides real-time prices
     let polymarketPrice: number | null = null;
     let polymarketSource = "none";
     
-    if (startTime && endTime) {
-      const polymarketResult = await fetchPolymarketCryptoPrice(startTime, endTime);
-      if (polymarketResult.success && polymarketResult.price) {
-        polymarketPrice = polymarketResult.price;
-        polymarketSource = polymarketResult.source;
-      }
-    }
-    
-    // Priority 2: Deep search for reference price in API response
+    // Priority 1: Deep search for reference price in API response
     const foundReferencePrice = findReferencePrice(data);
     
     // Priority 3: Try fallback fields if deep search didn't find it

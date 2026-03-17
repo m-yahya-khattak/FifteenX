@@ -28,55 +28,130 @@ export interface Trade {
   pnl?: number; // Profit/Loss if this was a closing trade
 }
 
-const STORAGE_KEYS = {
-  BALANCE: "virtual_balance",
-  POSITIONS: "virtual_positions",
-  TRADE_HISTORY: "virtual_trade_history",
-};
-
 const INITIAL_BALANCE = 10000; // $10,000 virtual starting balance
 
 export function useVirtualTrading() {
   const [balance, setBalance] = useState<number>(INITIAL_BALANCE);
   const [positions, setPositions] = useState<Position[]>([]);
   const [tradeHistory, setTradeHistory] = useState<Trade[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
 
-  // Load data from localStorage on mount
+  // Load data from database on mount
   useEffect(() => {
-    try {
-      const storedBalance = localStorage.getItem(STORAGE_KEYS.BALANCE);
-      if (storedBalance) {
-        setBalance(parseFloat(storedBalance));
-      }
+    const loadData = async () => {
+      try {
+        setIsLoading(true);
+        
+        // Load balance
+        const balanceRes = await fetch("/api/trading/balance");
+        const balanceData = await balanceRes.json();
+        if (balanceData.success) {
+          setBalance(balanceData.balance);
+        }
 
-      const storedPositions = localStorage.getItem(STORAGE_KEYS.POSITIONS);
-      if (storedPositions) {
-        setPositions(JSON.parse(storedPositions));
-      }
+        // Load positions
+        const positionsRes = await fetch("/api/trading/positions");
+        const positionsData = await positionsRes.json();
+        if (positionsData.success) {
+          // Map database fields to Position interface
+          setPositions(positionsData.positions.map((p: any) => ({
+            id: p.id,
+            marketId: p.market_id,
+            marketTitle: p.market_title,
+            side: p.side,
+            assetId: p.asset_id,
+            entryPrice: p.entry_price,
+            quantity: p.quantity,
+            entryValue: p.entry_value,
+            timestamp: p.timestamp,
+            endTime: p.end_time,
+          })));
+        }
 
-      const storedHistory = localStorage.getItem(STORAGE_KEYS.TRADE_HISTORY);
-      if (storedHistory) {
-        setTradeHistory(JSON.parse(storedHistory));
+        // Load trade history
+        const tradesRes = await fetch("/api/trading/trades?limit=100");
+        const tradesData = await tradesRes.json();
+        if (tradesData.success) {
+          // Map database fields to Trade interface
+          setTradeHistory(tradesData.trades.map((t: any) => ({
+            id: t.id,
+            marketId: t.market_id,
+            marketTitle: t.market_title,
+            side: t.side,
+            type: t.type,
+            price: t.price,
+            quantity: t.quantity,
+            value: t.value,
+            timestamp: t.timestamp,
+            pnl: t.pnl,
+          })));
+        }
+      } catch (error) {
+        console.error("Failed to load trading data:", error);
+      } finally {
+        setIsLoading(false);
       }
-    } catch (error) {
-      console.error("Failed to load trading data:", error);
-    }
+    };
+
+    loadData();
   }, []);
 
-  // Save balance to localStorage whenever it changes
+  // Save balance to database whenever it changes (debounced)
   useEffect(() => {
-    localStorage.setItem(STORAGE_KEYS.BALANCE, balance.toString());
-  }, [balance]);
+    if (isLoading) return;
+    
+    const timeoutId = setTimeout(async () => {
+      try {
+        await fetch("/api/trading/balance", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ balance }),
+        });
+      } catch (error) {
+        console.error("Failed to save balance:", error);
+      }
+    }, 500); // Debounce 500ms
 
-  // Save positions to localStorage whenever they change
-  useEffect(() => {
-    localStorage.setItem(STORAGE_KEYS.POSITIONS, JSON.stringify(positions));
-  }, [positions]);
+    return () => clearTimeout(timeoutId);
+  }, [balance, isLoading]);
 
-  // Save trade history to localStorage whenever it changes
+  // Save positions to database whenever they change (debounced)
   useEffect(() => {
-    localStorage.setItem(STORAGE_KEYS.TRADE_HISTORY, JSON.stringify(tradeHistory));
-  }, [tradeHistory]);
+    if (isLoading) return;
+    
+    const timeoutId = setTimeout(async () => {
+      try {
+        await fetch("/api/trading/positions", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ positions }),
+        });
+      } catch (error) {
+        console.error("Failed to save positions:", error);
+      }
+    }, 500); // Debounce 500ms
+
+    return () => clearTimeout(timeoutId);
+  }, [positions, isLoading]);
+
+  // Save trade history to database whenever it changes (debounced)
+  useEffect(() => {
+    if (isLoading) return;
+    
+    const timeoutId = setTimeout(async () => {
+      try {
+        await fetch("/api/trading/trades", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ trades: tradeHistory }),
+        });
+      } catch (error) {
+        console.error("Failed to save trades:", error);
+      }
+    }, 500); // Debounce 500ms
+
+    return () => clearTimeout(timeoutId);
+  }, [tradeHistory, isLoading]);
 
   // Buy shares (match against best ask price)
   const buy = useCallback((
@@ -272,13 +347,29 @@ export function useVirtualTrading() {
   }, [balance, positions]);
 
   // Reset all data (for testing/debugging)
-  const reset = useCallback(() => {
+  const reset = useCallback(async () => {
     setBalance(INITIAL_BALANCE);
     setPositions([]);
     setTradeHistory([]);
-    localStorage.removeItem(STORAGE_KEYS.BALANCE);
-    localStorage.removeItem(STORAGE_KEYS.POSITIONS);
-    localStorage.removeItem(STORAGE_KEYS.TRADE_HISTORY);
+    
+    // Reset in database
+    try {
+      await fetch("/api/trading/balance", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ balance: INITIAL_BALANCE }),
+      });
+      await fetch("/api/trading/positions", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ positions: [] }),
+      });
+      await fetch("/api/trading/trades", {
+        method: "DELETE",
+      });
+    } catch (error) {
+      console.error("Failed to reset trading data:", error);
+    }
   }, []);
 
   return {

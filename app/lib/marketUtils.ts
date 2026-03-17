@@ -20,10 +20,11 @@ export function getCurrent15MinInterval(): number {
 }
 
 /**
- * Generate market slug for a given timestamp
+ * Generate market slug for a given timestamp and symbol
  */
-export function generateMarketSlug(timestamp: number): string {
-  return `btc-updown-15m-${timestamp}`;
+export function generateMarketSlug(timestamp: number, symbol: string = "btc"): string {
+  const symbolLower = symbol.toLowerCase();
+  return `${symbolLower}-updown-15m-${timestamp}`;
 }
 
 /**
@@ -42,10 +43,10 @@ export function getIntervalTimestamps() {
 }
 
 /**
- * Try to fetch market for a given timestamp
+ * Try to fetch market for a given timestamp and symbol
  */
-export async function fetchMarketByTimestamp(timestamp: number) {
-  const slug = generateMarketSlug(timestamp);
+export async function fetchMarketByTimestamp(timestamp: number, symbol: string = "btc") {
+  const slug = generateMarketSlug(timestamp, symbol);
   try {
     const response = await fetch(
       `https://gamma-api.polymarket.com/markets/slug/${slug}`,
@@ -65,39 +66,54 @@ export async function fetchMarketByTimestamp(timestamp: number) {
 }
 
 /**
- * Find the active 15-minute BTC market
+ * Find the active 15-minute market for a symbol
  * Tries current interval, then previous, then next
  */
-export async function findActiveMarket() {
+export async function findActiveMarket(symbol: string = "btc") {
   const { current, previous, next } = getIntervalTimestamps();
   
   // Try current interval first
-  let result = await fetchMarketByTimestamp(current);
+  let result = await fetchMarketByTimestamp(current, symbol);
   if (result.success && result.market) {
     return result;
   }
   
   // Try previous interval (market might have just started)
-  result = await fetchMarketByTimestamp(previous);
+  result = await fetchMarketByTimestamp(previous, symbol);
   if (result.success && result.market) {
     return result;
   }
   
   // Try next interval (market might be upcoming)
-  result = await fetchMarketByTimestamp(next);
+  result = await fetchMarketByTimestamp(next, symbol);
   if (result.success && result.market) {
     return result;
   }
   
-  return { success: false, error: "No active market found" };
+  return { success: false, error: `No active market found for ${symbol}` };
+}
+
+/**
+ * Find all active markets for BTC, ETH, SOL, XRP
+ */
+export async function findAllActiveMarkets() {
+  const symbols = ["btc", "eth", "sol", "xrp"];
+  const results = await Promise.all(
+    symbols.map(async (symbol) => {
+      const result = await findActiveMarket(symbol);
+      return { symbol: symbol.toUpperCase(), result };
+    })
+  );
+  
+  return results;
 }
 
 /**
  * Extract timestamp from market slug
- * Format: btc-updown-15m-{timestamp}
+ * Format: {symbol}-updown-15m-{timestamp}
  */
 export function extractTimestampFromSlug(slug: string): number | null {
-  const match = slug.match(/btc-updown-15m-(\d+)/);
+  const match = slug.match(/(?:btc|eth|sol|xrp)-updown-15m-(\d+)/);
   if (match) {
     return parseInt(match[1], 10);
   }
@@ -265,7 +281,8 @@ export async function fetchHistoricalBTCPrice(timestamp: number): Promise<{
  */
 export async function fetchPolymarketCryptoPrice(
   startTime: string,
-  endTime: string
+  endTime: string,
+  symbol: string = "BTC"
 ): Promise<{
   success: boolean;
   price: number | null;
@@ -274,6 +291,7 @@ export async function fetchPolymarketCryptoPrice(
 }> {
   try {
     console.log(`\n=== FETCHING POLYMARKET CRYPTO PRICE ===`);
+    console.log(`Symbol: ${symbol}`);
     console.log(`Start Time: ${startTime}`);
     console.log(`End Time: ${endTime}`);
 
@@ -281,7 +299,7 @@ export async function fetchPolymarketCryptoPrice(
     const startTimeISO = new Date(startTime).toISOString();
     const endTimeISO = new Date(endTime).toISOString();
 
-    const url = `https://polymarket.com/api/crypto/crypto-price?symbol=BTC&eventStartTime=${encodeURIComponent(startTimeISO)}&variant=fifteen&endDate=${encodeURIComponent(endTimeISO)}`;
+    const url = `https://polymarket.com/api/crypto/crypto-price?symbol=${symbol.toUpperCase()}&eventStartTime=${encodeURIComponent(startTimeISO)}&variant=fifteen&endDate=${encodeURIComponent(endTimeISO)}`;
     
     console.log(`Polymarket crypto-price endpoint: ${url}`);
     

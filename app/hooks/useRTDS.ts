@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { isMainAppPaused } from "../lib/appConfig";
 
 interface PriceUpdate {
   topic: string;
@@ -64,6 +65,13 @@ export function useRTDS(source: PriceSource = "chainlink") {
   };
 
   const connect = () => {
+    // Check if main app is paused
+    if (isMainAppPaused()) {
+      setConnectionStatus("disconnected");
+      setIsConnected(false);
+      return;
+    }
+    
     if (wsRef.current?.readyState === WebSocket.OPEN) {
       return; // Already connected
     }
@@ -180,7 +188,10 @@ export function useRTDS(source: PriceSource = "chainlink") {
   }, [source]);
 
   useEffect(() => {
-    connect();
+    // Only connect if main app is not paused
+    if (!isMainAppPaused()) {
+      connect();
+    }
 
     return () => {
       disconnect();

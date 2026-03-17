@@ -2,6 +2,7 @@
 
 import { useEffect, useState, useRef, useMemo, useCallback } from "react";
 import { useRTDS } from "../hooks/useRTDS";
+import { isMainAppPaused } from "../lib/appConfig";
 
 interface PriceDataPoint {
   time: string;
@@ -30,6 +31,11 @@ export default function PriceChart() {
   // Fetch reference price
   useEffect(() => {
     const fetchReferencePrice = async () => {
+      // Don't fetch if main app is paused
+      if (isMainAppPaused()) {
+        return;
+      }
+      
       try {
         const response = await fetch("/api/markets?query=btc&limit=5");
         const data = await response.json();

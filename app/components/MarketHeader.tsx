@@ -2,6 +2,7 @@
 
 import { useEffect, useState, useRef } from "react";
 import { useRTDS, PriceSource } from "../hooks/useRTDS";
+import { isMainAppPaused, getMainAppPauseMessage } from "../lib/appConfig";
 
 interface MarketData {
   id?: string;
@@ -134,6 +135,13 @@ export default function MarketHeader() {
 
   // Fetch market data (with optional retry flag)
   const fetchMarketData = async (isRetry: boolean = false) => {
+    // Don't fetch if main app is paused
+    if (isMainAppPaused()) {
+      setError(getMainAppPauseMessage());
+      setLoading(false);
+      return;
+    }
+    
     try {
       // First, get list of markets to find a 15-minute BTC market
       const marketsResponse = await fetch("/api/markets?query=btc&limit=5");
